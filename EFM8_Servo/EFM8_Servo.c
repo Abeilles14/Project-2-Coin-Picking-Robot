@@ -9,12 +9,13 @@
 
 volatile unsigned int pwm_reload0;
 volatile unsigned int pwm_reload1;
-volatile unsigned char pwm_state0=0;
-volatile unsigned char pwm_state1=0;
+volatile unsigned char pwm_state0 = 0;
+volatile unsigned char pwm_state1 = 0;
 volatile unsigned char count20ms;
+volatile unsigned int arm_flag = 0;
 
-#define PWMOUT0 P2_6
-#define PWMOUT1 P3_0
+#define PWMOUT0 P2_0 		//bottom motor
+#define PWMOUT1 P1_7		//top motor
 
 #define SYSCLK 72000000L // SYSCLK frequency in Hz
 #define BAUDRATE 115200L
@@ -69,6 +70,7 @@ char _c51_external_startup (void)
 	#endif
 	
 	// Configure the pins used for square output
+	P1MDOUT|=0b_1000_0000;
 	P2MDOUT|=0b_0000_0011;
 	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
 	XBR0     = 0x01; // Enable UART0 on P0.4(TX) and P0.5(RX)                     
@@ -104,6 +106,38 @@ char _c51_external_startup (void)
 	return 0;
 }
 
+// Uses Timer3 to delay <us> micro-seconds. 
+void Timer3us(unsigned char us)
+{
+	unsigned char i;               // usec counter
+	
+	// The input for Timer 3 is selected as SYSCLK by setting T3ML (bit 6) of CKCON0:
+	CKCON0|=0b_0100_0000;
+	
+	TMR3RL = (-(SYSCLK)/1000000L); // Set Timer3 to overflow in 1us.
+	TMR3 = TMR3RL;                 // Initialize Timer3 for first overflow
+	
+	TMR3CN0 = 0x04;                 // Sart Timer3 and clear overflow flag
+	for (i = 0; i < us; i++)       // Count <us> overflows
+	{
+		while (!(TMR3CN0 & 0x80));  // Wait for overflow
+		TMR3CN0 &= ~(0x80);         // Clear overflow indicator
+	}
+	TMR3CN0 = 0 ;                   // Stop Timer3 and clear overflow flag
+}
+
+void waitms (unsigned int ms)
+{
+	unsigned int j;
+	for(j=ms; j!=0; j--)
+	{
+		Timer3us(249);
+		Timer3us(249);
+		Timer3us(249);
+		Timer3us(250);
+	}
+}
+
 void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 {
 	SFRPAGE=0x10;
@@ -111,53 +145,85 @@ void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 	// Since the maximum time we can achieve with this timer in the
 	// configuration above is about 10ms, implement a simple state
 	// machine to produce the required 20ms period.
-	switch (pwm_state0)
-	{
-	   case 0:
-	      PWMOUT0=1;
-	      TMR5RL=RELOAD_10MS;
-	      pwm_state0=1;
-	      count20ms++;
-	   break;
-	   case 1:
-	      PWMOUT0=0;
-	      TMR5RL=RELOAD_10MS-pwm_reload0;
-	      pwm_state0=2;
-	   break;
-	   default:
-	      PWMOUT0=0;
-	      TMR5RL=pwm_reload0;
-	      pwm_state0=0;
-	   break;
+	if (arm_flag == 0){
+		switch (pwm_state0)
+		{
+		   case 0:
+		      PWMOUT0=1;
+		      TMR5RL=RELOAD_10MS;
+		      pwm_state0=1;
+		      count20ms++;
+		   break;
+		   case 1:
+		      PWMOUT0=0;
+		      TMR5RL=RELOAD_10MS-pwm_reload0;
+		      pwm_state0=2;
+		   break;
+		   default:
+		      PWMOUT0=0;
+		      TMR5RL=pwm_reload0;
+		      pwm_state0=0;
+		   break;
+		}
+	}	else if (arm_flag == 1) {
+			switch (pwm_state1)
+			{
+			   case 0:
+			      PWMOUT1=1;
+			      TMR5RL=RELOAD_10MS;
+			      pwm_state1=1;
+			      count20ms++;
+			   break;
+			   case 1:
+			      PWMOUT1=0;
+			      TMR5RL=RELOAD_10MS-pwm_reload1;
+			      pwm_state1=2;
+			   break;
+			   default:
+			      PWMOUT1=0;
+			      TMR5RL=pwm_reload1;
+			      pwm_state1=0;
+			   break;
+			}
 	}
 
-	//SFRPAGE=0x10;
-	TF5H = 0; // Clear Timer5 interrupt flag
-	switch (pwm_state1)
-	{
-	   case 0:
-	      PWMOUT1=1;
-	      TMR5RL=RELOAD_10MS;
-	      pwm_state1=1;
-	      count20ms++;
-	   break;
-	   case 1:
-	      PWMOUT1=0;
-	      TMR5RL=RELOAD_10MS-pwm_reload1;
-	      pwm_state1=2;
-	   break;
-	   default:
-	      PWMOUT1=0;
-	      TMR5RL=pwm_reload1;
-	      pwm_state1=0;
-	   break;
-	}
+}
+
+void arm_pick_up(void) {
+	waitms(300);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
+	waitms(300);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*0.6*1.0e-3)/12.0;		//pick up
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//drop
+	waitms(300);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
+	waitms(300);
+}
+
+void arm_reset(void) {		//resets and centers arm
+	waitms(300);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
+	waitms(300);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
+	waitms(300);
 }
 
 void main (void)
 {
     float pulse_width0;
-    float pulse_width1;
     
     count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
     while((1000/20)>count20ms); // Wait a second to give PuTTy a chance to start
@@ -169,26 +235,20 @@ void main (void)
     // of rotation range.
 	while(1)
 	{
-		printf("\nPulse width [0.6,2.4] (ms)=");
-		//scanf("%f", &pulse_width0);
-		scanf("%f %f", &pulse_width0, &pulse_width1);
-		// if((pulse_width0>=0.6)&&(pulse_width0<=2.4001))
-		// {
-	 //        pwm_reload0=0x10000L-(SYSCLK*pulse_width0*1.0e-3)/12.0;
-		// }
-		// else
-		// {
-		//    printf("Error: pulse width must be between 0.6 and 2.4 ms\n");
-		// }
+		printf("\nPulse width bottom motor [0.6,2.4] (ms)=");
 
-		if((pulse_width0>=0.6)&&(pulse_width0<=2.4001)&&(pulse_width1>=0.6)&&(pulse_width1<=2.4001))
+		scanf("%f", &pulse_width0);
+
+		if(pulse_width0 == 1)
 		{
-	 	       pwm_reload0=0x10000L-(SYSCLK*pulse_width0*1.0e-3)/12.0;
-	 			  pwm_reload1=0x10000L-(SYSCLK*pulse_width0*1.0e-3)/12.0;
+			arm_pick_up();
 		}
 		else
 		{
-		   printf("Error: pulse width must be between 0.6 and 2.4 ms\n");
+		   arm_reset();
+		   waitms(2000);
+			P2_6 = 1;
+			waitms(2000);
 		}
 	}
 }
