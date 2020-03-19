@@ -17,9 +17,13 @@ volatile unsigned int arm_flag = 0;
 #define PWMOUT0 P2_0 		//bottom motor
 #define PWMOUT1 P1_7		//top motor
 
+#define PWMMAG P2_6			//electromagnet
+
 #define SYSCLK 72000000L // SYSCLK frequency in Hz
 #define BAUDRATE 115200L
 #define RELOAD_10MS (0x10000L-(SYSCLK/(12L*100L)))
+
+unsigned char overflow_count;
 
 char _c51_external_startup (void)
 {
@@ -71,7 +75,7 @@ char _c51_external_startup (void)
 	
 	// Configure the pins used for square output
 	P1MDOUT|=0b_1000_0000;
-	P2MDOUT|=0b_0000_0011;
+	P2MDOUT|=0b_0100_0011;
 	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
 	XBR0     = 0x01; // Enable UART0 on P0.4(TX) and P0.5(RX)                     
 	XBR1     = 0X10; // Enable T0 on P0.0
@@ -138,6 +142,13 @@ void waitms (unsigned int ms)
 	}
 }
 
+void TIMER0_Init(void)
+{
+	TMOD&=0b_1111_0000; // Set the bits of Timer/Counter 0 to zero
+	TMOD|=0b_0000_0101; // Timer/Counter 0 used as a 16-bit counter
+	TR0=0; // Stop Timer/Counter 0
+}
+
 void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 {
 	SFRPAGE=0x10;
@@ -189,11 +200,12 @@ void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 
 }
 
-void arm_pick_up(void) {
-	waitms(300);
+void arm_pick_up(void) {			//picks up coins
+	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
-	waitms(300);
+	//PWMMAG = 1;										// Electromagnet on
+	waitms(500);
 	arm_flag = 0;
 	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
 	waitms(500);
@@ -204,26 +216,31 @@ void arm_pick_up(void) {
 	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
 	waitms(500);
 	arm_flag = 1;
-	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//drop
-	waitms(300);
+	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
+	//PWMMAG = 0;										//Electromagnet off
+	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
-	waitms(300);
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.2e-3)/12.0;		//centered
+	waitms(500);
 }
 
 void arm_reset(void) {		//resets and centers arm
-	waitms(300);
+	waitms(500);
+	//PWMMAG = 0;											//Electromagnet off
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
-	waitms(300);
+	waitms(500);
 	arm_flag = 0;
 	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
-	waitms(300);
+	waitms(500);
 }
 
 void main (void)
 {
-    float pulse_width0;
+
+    unsigned long frequency;
+	
+	TIMER0_Init();
     
     count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
     while((1000/20)>count20ms); // Wait a second to give PuTTy a chance to start
@@ -233,22 +250,41 @@ void main (void)
 
     // In a HS-422 servo a pulse width between 0.6 to 2.4 ms gives about 180 deg
     // of rotation range.
+    //arm_reset();
+    arm_reset();
+
 	while(1)
 	{
-		printf("\nPulse width bottom motor [0.6,2.4] (ms)=");
 
-		scanf("%f", &pulse_width0);
+		//check if metal detected
+		TL0=0;
+		TH0=0;
+		overflow_count=0;
+		TF0=0;
+		TR0=1; // Start Timer/Counter 0
+		
+		waitms(1000);
+		TR0=0; // Stop Timer/Counter 0
+		frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
 
-		if(pulse_width0 == 1)
-		{
+		printf("\rf=%luHz", frequency);
+		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
+
+		if (frequency >= 54620) {
 			arm_pick_up();
 		}
-		else
-		{
-		   arm_reset();
-		   waitms(2000);
-			P2_6 = 1;
-			waitms(2000);
-		}
+
+		// printf("\nPulse width bottom motor [0.6,2.4] (ms)=");
+
+		// scanf("%f", &pulse_width0);
+
+		// if(pulse_width0 == 1)
+		// {
+		// 	arm_pick_up();
+		// }
+		// else
+		// {
+		//    arm_reset();
+		// }
 	}
 }

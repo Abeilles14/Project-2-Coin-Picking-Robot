@@ -11,6 +11,7 @@
 
 #define SYSCLK 72000000L
 #define BAUDRATE 115200L
+#define RELOAD_10MS (0x10000L-(SYSCLK/(12L*100L)))
 
 #define LCD_RS P2_6
 // #define LCD_RW Px_x // Not used in this code.  Connect to GND
@@ -27,6 +28,10 @@
 #define OUT2 P2_2		//motor 2
 #define OUT3 P2_1
 
+#define PWMOUT0 P2_0 		//bottom motor
+#define PWMOUT1 P1_7		//top motor
+
+#define PWMMAG P2_6			//electromagnet
 
 #define VDD 3.3035 // The measured value of VDD in volts
 
@@ -38,6 +43,15 @@ volatile unsigned int in1 = 50;
 
 volatile unsigned int in2 = 50;
 volatile unsigned int in3 = 50;
+
+volatile unsigned int pwm_reload0;
+volatile unsigned int pwm_reload1;
+volatile unsigned char pwm_state0 = 0;
+volatile unsigned char pwm_state1 = 0;
+volatile unsigned char count20ms;
+volatile unsigned int arm_flag = 0;
+
+unsigned char overflow_count;
 
 char _c51_external_startup (void)
 {
@@ -87,6 +101,9 @@ char _c51_external_startup (void)
 		#error SYSCLK must be either 12250000L, 24500000L, 48000000L, or 72000000L
 	#endif
 	
+	// Configure the pins used for square output
+	P1MDOUT|=0b_1000_0000;
+	P2MDOUT|=0b_0100_0011;
 	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
 	XBR0     = 0x01; // Enable UART0 on P0.4(TX) and P0.5(RX)                     
 	XBR1     = 0X00;
@@ -96,7 +113,9 @@ char _c51_external_startup (void)
 	#if (((SYSCLK/BAUDRATE)/(2L*12L))>0xFFL)
 		#error Timer 0 reload value is incorrect because (SYSCLK/BAUDRATE)/(2L*12L) > 0xFF
 	#endif
+
 	SCON0 = 0x10;
+	CKCON0 |= 0b_0000_0000 ; // Timer 1 uses the system clock divided by 12.
 	TH1 = 0x100-((SYSCLK/BAUDRATE)/(2L*12L));
 	TL1 = TH1;      // Init Timer1
 	TMOD &= ~0xf0;  // TMOD: timer 1 in 8-bit auto-reload
@@ -112,8 +131,18 @@ char _c51_external_startup (void)
 	ET2=1;         // Enable Timer2 interrupts
 	TR2=1;         // Start Timer2 (TMR2CN is bit addressable)
 
+	// Initialize timer 5 for periodic interrupts
+	SFRPAGE=0x10;
+	TMR5CN0=0x00;   // Stop Timer5; Clear TF5;
+	pwm_reload0=0x10000L-(SYSCLK*1.5e-3)/12.0; // 1.5 miliseconds pulse is the center of the servo
+	pwm_reload1=0x10000L-(SYSCLK*1.5e-3)/12.0; // 1.5 miliseconds pulse is the center of the servo
+	TMR5=0xffff;   // Set to reload immediately
+	//EIE2|=0b_0000_1000; // Enable Timer5 interrupts
+	TR5=1;         // Start Timer5 (TMR5CN0 is bit addressable)
+
 	EA=1; // Enable interrupts
 
+	SFRPAGE=0x00;
   	
 	return 0;
 }
@@ -160,6 +189,13 @@ void waitms (unsigned int ms)
 		Timer3us(249);
 		Timer3us(250);
 	}
+}
+
+void TIMER0_Init(void)
+{
+	TMOD&=0b_1111_0000; // Set the bits of Timer/Counter 0 to zero
+	TMOD|=0b_0000_0101; // Timer/Counter 0 used as a 16-bit counter
+	TR0=0; // Stop Timer/Counter 0
 }
 
 void LCD_pulse (void)
@@ -250,24 +286,6 @@ int getsn (char * buff, int len)
 	return len;
 }
 
-void Timer2_ISR (void) interrupt 5
-{
-	TF2H = 0; // Clear Timer2 interrupt flag
-	
-	pwm_count0++;
-	if(pwm_count0>100) pwm_count0=0;
-	
-	OUT0=pwm_count0>in0?0:1;
-	OUT1=pwm_count0>in1?0:1;
-
-	pwm_count1++;
-	if(pwm_count1>100) pwm_count1=0;
-	
-	OUT2=pwm_count1>in2?0:1;
-	OUT3=pwm_count1>in3?0:1;
-
-}
-
 void InitPinADC (unsigned char portno, unsigned char pinno)
  {
 	unsigned char mask;
@@ -310,36 +328,161 @@ void InitPinADC (unsigned char portno, unsigned char pinno)
  	return ((ADC_at_Pin(pin)*VDD)/0b_0011_1111_1111_1111);
  }
 
-// void printPython(void){
-// 	while(1){
-// 		printf("%f\n", Volts_at_Pin(QFP32_MUX_P1_5));
-// 	}
-// }
+
+void Timer2_ISR (void) interrupt 5
+{
+	TF2H = 0; // Clear Timer2 interrupt flag
+	
+	pwm_count0++;
+	if(pwm_count0>100) pwm_count0=0;
+	
+	OUT0=pwm_count0>in0?0:1;
+	OUT1=pwm_count0>in1?0:1;
+
+	pwm_count1++;
+	if(pwm_count1>100) pwm_count1=0;
+	
+	OUT2=pwm_count1>in2?0:1;
+	OUT3=pwm_count1>in3?0:1;
+
+}
+
+void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
+{
+	SFRPAGE=0x10;
+	TF5H = 0; // Clear Timer5 interrupt flag
+	// Since the maximum time we can achieve with this timer in the
+	// configuration above is about 10ms, implement a simple state
+	// machine to produce the required 20ms period.
+	if (arm_flag == 0){
+		switch (pwm_state0)
+		{
+		   case 0:
+		      PWMOUT0=1;
+		      TMR5RL=RELOAD_10MS;
+		      pwm_state0=1;
+		      count20ms++;
+		   break;
+		   case 1:
+		      PWMOUT0=0;
+		      TMR5RL=RELOAD_10MS-pwm_reload0;
+		      pwm_state0=2;
+		   break;
+		   default:
+		      PWMOUT0=0;
+		      TMR5RL=pwm_reload0;
+		      pwm_state0=0;
+		   break;
+		}
+	}	else if (arm_flag == 1) {
+			switch (pwm_state1)
+			{
+			   case 0:
+			      PWMOUT1=1;
+			      TMR5RL=RELOAD_10MS;
+			      pwm_state1=1;
+			      count20ms++;
+			   break;
+			   case 1:
+			      PWMOUT1=0;
+			      TMR5RL=RELOAD_10MS-pwm_reload1;
+			      pwm_state1=2;
+			   break;
+			   default:
+			      PWMOUT1=0;
+			      TMR5RL=pwm_reload1;
+			      pwm_state1=0;
+			   break;
+			}
+	}
+
+}
+
+
+void arm_pick_up(void) {			//picks up coins
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
+	//PWMMAG = 1;										// Electromagnet on
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*0.6*1.0e-3)/12.0;		//pick up
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
+	//PWMMAG = 0;										//Electromagnet off
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.2e-3)/12.0;		//centered
+	waitms(500);
+}
+
+void arm_reset(void) {		//resets and centers arm
+	waitms(500);
+	//PWMMAG = 0;											//Electromagnet off
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
+	waitms(500);
+}
 
 void main (void)
 {
-	char *buff;
 	int state = 0;
 	int previous_state = 0;
 	int inrange = 1;
+	unsigned long frequency;
+	
+	TIMER0_Init();
 
-	InitPinADC(1, 0); // Configure P2.5 as analog input
-	InitADC();
-	LCD_4BIT();
+   count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
+   //while((1000/20)>count20ms); // Wait a second to give PuTTy a chance to start
+   waitms(500);		//wait for putty to start
 
-	waitms(500); // Give PuTTY a chance to start.
+	// InitPinADC(1, 0); // Configure P2.5 as analog input
+	// InitADC();
+	// LCD_4BIT();
 
 	printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-	// printf("\rEnter 2 numbers between 0-100 (separated by a space): ");
-	// scanf("%d %d\n", &in0,&in1);
-
 	printf("\rEnter 4 spaced numbers (2 for right/left motors) between 0-100: ");
 	scanf("%d %d %d %d\n", &in0,&in1,&in2,&in3);
 
-//	while(1){
-		while(1)
-		{
+	arm_reset();
+	while(1)
+	{
+		TL0=0;
+		TH0=0;
+		overflow_count=0;
+		TF0=0;
+		TR0=1; // Start Timer/Counter 0
+		
+		waitms(1000);
+		TR0=0; // Stop Timer/Counter 0
+		frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
 
+		printf("\rf=%luHz", frequency);
+		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
+
+		if (frequency >= 54620) {
+			in0 = 30;
+			in1 = 70;
+			in2 = 30;
+			in3 = 70;
+			waitms(200);
+			in0 = 50;
+			in1 = 50;
+			in2 = 50;
+			in3 = 50;
+			arm_pick_up();
 		}
+	}
 
 }
