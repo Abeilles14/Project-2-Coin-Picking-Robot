@@ -106,7 +106,7 @@ char _c51_external_startup (void)
 	P2MDOUT|=0b_0100_0011;
 	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
 	XBR0     = 0x01; // Enable UART0 on P0.4(TX) and P0.5(RX)                     
-	XBR1     = 0X00;
+	XBR1     = 0X10; // Enable T0 on P0.0
 	XBR2     = 0x40; // Enable crossbar and weak pull-ups
 
 	// Configure Uart 0
@@ -137,7 +137,7 @@ char _c51_external_startup (void)
 	pwm_reload0=0x10000L-(SYSCLK*1.5e-3)/12.0; // 1.5 miliseconds pulse is the center of the servo
 	pwm_reload1=0x10000L-(SYSCLK*1.5e-3)/12.0; // 1.5 miliseconds pulse is the center of the servo
 	TMR5=0xffff;   // Set to reload immediately
-	//EIE2|=0b_0000_1000; // Enable Timer5 interrupts
+	EIE2|=0b_0000_1000; // Enable Timer5 interrupts
 	TR5=1;         // Start Timer5 (TMR5CN0 is bit addressable)
 
 	EA=1; // Enable interrupts
@@ -424,7 +424,6 @@ void arm_pick_up(void) {			//picks up coins
 }
 
 void arm_reset(void) {		//resets and centers arm
-	waitms(500);
 	//PWMMAG = 0;											//Electromagnet off
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
@@ -440,22 +439,37 @@ void main (void)
 	int previous_state = 0;
 	int inrange = 1;
 	unsigned long frequency;
+	unsigned long freq_init;
 	
 	TIMER0_Init();
 
    count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
-   //while((1000/20)>count20ms); // Wait a second to give PuTTy a chance to start
    waitms(500);		//wait for putty to start
 
 	// InitPinADC(1, 0); // Configure P2.5 as analog input
 	// InitADC();
 	// LCD_4BIT();
 
-	printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-	printf("\rEnter 4 spaced numbers (2 for right/left motors) between 0-100: ");
-	scanf("%d %d %d %d\n", &in0,&in1,&in2,&in3);
+  	//initial frequency  
+   	TL0=0;
+	TH0=0;
+	overflow_count=0;
+	TF0=0;
+	TR0=1; // Start Timer/Counter 0
+		
+	waitms(1000);
+	TR0=0; // Stop Timer/Counter 0
+	freq_init=overflow_count*0x10000L+TH0*0x100L+TL0;
 
-	arm_reset();
+	while(freq_init< 50000);	//ensures that frequency readings are correct
+
+   	arm_reset();
+
+    in0 = 60;
+	in1 = 40;
+	in2 = 60;
+	in3 = 40;
+
 	while(1)
 	{
 		TL0=0;
@@ -471,17 +485,22 @@ void main (void)
 		printf("\rf=%luHz", frequency);
 		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
 
-		if (frequency >= 54620) {
-			in0 = 30;
-			in1 = 70;
-			in2 = 30;
-			in3 = 70;
-			waitms(200);
+		if (frequency >= freq_init + 200) {
+			in0 = 20;
+			in1 = 80;
+			in2 = 20;
+			in3 = 80;
+			waitms(500);
 			in0 = 50;
 			in1 = 50;
 			in2 = 50;
 			in3 = 50;
 			arm_pick_up();
+		} else {
+			in0 = 60;
+			in1 = 40;
+			in2 = 60;
+			in3 = 40;
 		}
 	}
 

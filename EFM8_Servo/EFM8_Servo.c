@@ -201,7 +201,6 @@ void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 }
 
 void arm_pick_up(void) {			//picks up coins
-	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
 	//PWMMAG = 1;										// Electromagnet on
@@ -220,12 +219,11 @@ void arm_pick_up(void) {			//picks up coins
 	//PWMMAG = 0;										//Electromagnet off
 	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*1.2*1.2e-3)/12.0;		//centered
+	pwm_reload0=0x10000L-(SYSCLK*1.1*1.2e-3)/12.0;		//centered
 	waitms(500);
 }
 
 void arm_reset(void) {		//resets and centers arm
-	waitms(500);
 	//PWMMAG = 0;											//Electromagnet off
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
@@ -239,6 +237,7 @@ void main (void)
 {
 
     unsigned long frequency;
+    unsigned int move;
 	
 	TIMER0_Init();
     
@@ -250,13 +249,14 @@ void main (void)
 
     // In a HS-422 servo a pulse width between 0.6 to 2.4 ms gives about 180 deg
     // of rotation range.
-    //arm_reset();
     arm_reset();
+
+    //get an approximate frequency range and threshold
+
 
 	while(1)
 	{
 
-		//check if metal detected
 		TL0=0;
 		TH0=0;
 		overflow_count=0;
@@ -270,21 +270,18 @@ void main (void)
 		printf("\rf=%luHz", frequency);
 		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
 
-		if (frequency >= 54620) {
+		if (frequency >= 54800) {
 			arm_pick_up();
 		}
 
 		// printf("\nPulse width bottom motor [0.6,2.4] (ms)=");
+		// scanf("%d", &move);
 
-		// scanf("%f", &pulse_width0);
+		// if(move == 0) {
+		// 	arm_reset();
+		// } else {
+		//    arm_pick_up();
+		// }
 
-		// if(pulse_width0 == 1)
-		// {
-		// 	arm_pick_up();
-		// }
-		// else
-		// {
-		//    arm_reset();
-		// }
 	}
 }
