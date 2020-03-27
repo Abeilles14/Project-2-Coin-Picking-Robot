@@ -11,7 +11,7 @@
 
 #define SYSCLK 72000000L
 #define BAUDRATE 115200L
-#define RELOAD_10MS (0x10000L-(SYSCLK/(12L*100L)))
+#define RELOAD_10MS (0x10000L-(SYSCLK/(12L*100L)+1))
 
 #define LCD_RS P2_6
 // #define LCD_RW Px_x // Not used in this code.  Connect to GND
@@ -31,7 +31,7 @@
 #define PWMOUT0 P2_0 		//bottom motor
 #define PWMOUT1 P1_7		//top motor
 
-#define PWMMAG P2_6			//electromagnet
+#define PWMMAG P3_0			//electromagnet
 
 #define VDD 3.3035 // The measured value of VDD in volts
 
@@ -400,10 +400,11 @@ void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 
 
 void arm_pick_up(void) {			//picks up coins
+	PWMMAG = 0;	
 	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
-	//PWMMAG = 1;										// Electromagnet on
+	PWMMAG = 1;						//electromagnet on
 	waitms(500);
 	arm_flag = 0;
 	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
@@ -416,15 +417,15 @@ void arm_pick_up(void) {			//picks up coins
 	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
-	//PWMMAG = 0;										//Electromagnet off
+	PWMMAG = 0;										//Electromagnet off
 	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*1.2*1.2e-3)/12.0;		//centered
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.1e-3)/12.0;		//centered
 	waitms(500);
 }
 
 void arm_reset(void) {		//resets and centers arm
-	//PWMMAG = 0;											//Electromagnet off
+	PWMMAG = 0;											//Electromagnet off
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
 	waitms(500);
@@ -465,7 +466,7 @@ void main (void)
 
    	arm_reset();
 
-    in0 = 60;
+	in0 = 60;
 	in1 = 40;
 	in2 = 60;
 	in3 = 40;
@@ -485,7 +486,7 @@ void main (void)
 		printf("\rf=%luHz", frequency);
 		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
 
-		if (frequency >= freq_init + 200) {
+		if (frequency >= freq_init + 100) {
 			in0 = 20;
 			in1 = 80;
 			in2 = 20;
