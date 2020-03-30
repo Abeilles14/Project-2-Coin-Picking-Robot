@@ -46,7 +46,7 @@ extern volatile int timer_count;
 // timer 0 used for systemclock
 #define TIMER0_RELOAD_VALUE (65536L-((SYSCLK/12L)/1000L))
 
-#define SOUNDPIN P2_1
+#define SOUNDPIN P2_6
 
 volatile int timer_count;
 
@@ -112,6 +112,7 @@ unsigned char _c51_external_startup()
 	TR1 = 1; // START Timer1
 	TI = 1;  // Indicate TX0 ready
 
+	P2MDOUT|=0b_0100_0000;
 	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
 	XBR0 = 0b_0000_0001; // Enable UART pins P0.4(TX) and P0.5(RX)
 	XBR1 = 0X00;
