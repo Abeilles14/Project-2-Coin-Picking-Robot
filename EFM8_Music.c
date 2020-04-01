@@ -165,6 +165,7 @@ void Menu (void)
     "   1) Start tune\n"
     "   2) Coin tune\n"
     "   3) Win tune\n"
+    "	4) Beyonce\n"
     "Option:" );
 }
 
@@ -192,6 +193,9 @@ void main(void)
         	   break;
          	case '3':
         	   ParseMDL(endtune);
+        	   break;
+        	case '4':
+        		ParseMDL(beyonce);
         	   break;
 			default:
 			    break;

@@ -300,6 +300,9 @@ void Timer2_ISR (void) interrupt INTERRUPT_TIMER2
 	if (sound_flag == 1) {
 		SOUNDPIN=!SOUNDPIN;
 	} else {
+
+		TR2=1;
+
 		pwm_count0++;
 		if(pwm_count0>100) pwm_count0=0;
 		
@@ -418,99 +421,99 @@ void arm_reset(void) {		//resets and centers arm
 
 void main (void)
 {
-	// int state = 0;
-	// int previous_state = 0;
-	// int inrange = 1;
-	// unsigned long frequency;
-	// unsigned long freq_init;
+	int state = 0;
+	int previous_state = 0;
+	int inrange = 1;
+	unsigned long frequency;
+	unsigned long freq_init;
 
-	// char c;
-	// sound_flag = 0;
+	char c;
+	sound_flag = 0;
 	
-	// TIMER0_Init();
+	TIMER0_Init();
 
- //   count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
- //   waitms(500);		//wait for putty to start
+   count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
+   waitms(500);		//wait for putty to start
 
- //  	//initial frequency  
- //   	TL0=0;
-	// TH0=0;
-	// overflow_count=0;
-	// TF0=0;
-	// TR0=1; // Start Timer/Counter 0
+  	//initial frequency  
+   	TL0=0;
+	TH0=0;
+	overflow_count=0;
+	TF0=0;
+	TR0=1; // Start Timer/Counter 0
 		
-	// waitms(1000);
-	// TR0=0; // Stop Timer/Counter 0
-	// freq_init=overflow_count*0x10000L+TH0*0x100L+TL0;
+	waitms(1000);
+	TR0=0; // Stop Timer/Counter 0
+	freq_init=overflow_count*0x10000L+TH0*0x100L+TL0;
 
-	// while(freq_init< 50000);	//ensures that frequency readings are correct
+	while(freq_init< 50000);	//ensures that frequency readings are correct
 
- //   	arm_reset();
+   	arm_reset();
 
 	// in0 = 60;
 	// in1 = 40;
 	// in2 = 60;
 	// in3 = 40;
 
+	// char c;
 
-	char c;
-	sound_flag = 1;
-	timer_count=0;
-	while(timer_count<1000);
+	// sound_flag = 1;
+	// timer_count=0;
+	// while(timer_count<1000);
 	
-	printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-    printf("ANSI MUSIC V2.0: by Jesus Calvino-Fraga 2002-2018\n");
+	// printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
+ //    printf("ANSI MUSIC V2.0: by Jesus Calvino-Fraga 2002-2018\n");
 
 	 while(1)
 	 {
-		// TL0=0;
-		// TH0=0;
-		// overflow_count=0;
-		// TF0=0;
-		// TR0=1; // Start Timer/Counter 0
+		TL0=0;
+		TH0=0;
+		overflow_count=0;
+		TF0=0;
+		TR0=1; // Start Timer/Counter 0
 		
-		// waitms(1000);
-		// TR0=0; // Stop Timer/Counter 0
-		// frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
+		waitms(1000);
+		TR0=0; // Stop Timer/Counter 0
+		frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
 
-		// printf("\rf=%luHz", frequency);
-		// printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
+		printf("\rf=%luHz", frequency);
+		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
 
-		// if (frequency >= freq_init + 100) {
-		// 	in0 = 20;
-		// 	in1 = 80;
-		// 	in2 = 20;
-		// 	in3 = 80;
-		// 	waitms(500);
-		// 	in0 = 50;
-		// 	in1 = 50;
-		// 	in2 = 50;
-		// 	in3 = 50;
-		// 	arm_pick_up();
-		// } else {
-		// 	in0 = 60;
-		// 	in1 = 40;
-		// 	in2 = 60;
-		// 	in3 = 40;
-		// }
+		if (frequency >= freq_init + 100) {
+			in0 = 20;
+			in1 = 80;
+			in2 = 20;
+			in3 = 80;
+			waitms(500);
+			in0 = 50;
+			in1 = 50;
+			in2 = 50;
+			in3 = 50;
+			arm_pick_up();
+		} else {
+			in0 = 60;
+			in1 = 40;
+			in2 = 60;
+			in3 = 40;
+		}
 
 
-		Menu();
-        c=getchar();
-        switch(c)
-        {
-        	case '1':
-        	   ParseMDL(starttune);
-        	   break;
-        	case '2':
-        	   ParseMDL(cointune);
-        	   break;
-         	case '3':
-        	   ParseMDL(endtune);
-        	   break;
-			default:
-		 	break;
-       }
+		// Menu();
+  //       c=getchar();
+  //       switch(c)
+  //       {
+  //       	case '1':
+  //       	   ParseMDL(starttune);
+  //       	   break;
+  //       	case '2':
+  //       	   ParseMDL(cointune);
+  //       	   break;
+  //        	case '3':
+  //       	   ParseMDL(endtune);
+  //       	   break;
+		// 	default:
+		//  	break;
+  //      }
    }
 }
 

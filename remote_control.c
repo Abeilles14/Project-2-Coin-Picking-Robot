@@ -12,14 +12,6 @@
 #define SYSCLK 72000000L
 #define BAUDRATE 115200L
 
-#define LCD_RS P2_6
-// #define LCD_RW Px_x // Not used in this code.  Connect to GND
-#define LCD_E  P2_5
-#define LCD_D4 P2_4
-#define LCD_D5 P2_3
-#define LCD_D6 P2_2
-#define LCD_D7 P2_1
-#define CHARS_PER_LINE 16
 //motor 1(right)
 #define OUT0 P2_4	//1_4
 #define OUT1 P2_3	//1_5
@@ -33,11 +25,6 @@
 #define RGT_BUTTON P1_2
 #define LFT_BUTTON P1_4
 #define STOP_BUTTON P1_7
-
-//1&4
-//2&3
-
-//80 20 80 20
 
 #define VDD 3.3035 // The measured value of VDD in volts
 
@@ -173,94 +160,6 @@ void waitms (unsigned int ms)
 	}
 }
 
-void LCD_pulse (void)
-{
-	LCD_E=1;
-	Timer3us(40);
-	LCD_E=0;
-}
-
-void LCD_byte (unsigned char x)
-{
-	// The accumulator in the C8051Fxxx is bit addressable!
-	ACC=x; //Send high nible
-	LCD_D7=ACC_7;
-	LCD_D6=ACC_6;
-	LCD_D5=ACC_5;
-	LCD_D4=ACC_4;
-	LCD_pulse();
-	Timer3us(40);
-	ACC=x; //Send low nible
-	LCD_D7=ACC_3;
-	LCD_D6=ACC_2;
-	LCD_D5=ACC_1;
-	LCD_D4=ACC_0;
-	LCD_pulse();
-}
-
-void WriteData (unsigned char x)
-{
-	LCD_RS=1;
-	LCD_byte(x);
-	waitms(2);
-}
-
-void WriteCommand (unsigned char x)
-{
-	LCD_RS=0;
-	LCD_byte(x);
-	waitms(5);
-}
-
-void LCD_4BIT (void)
-{
-	LCD_E=0; // Resting state of LCD's enable is zero
-	// LCD_RW=0; // We are only writing to the LCD in this program
-	waitms(20);
-	// First make sure the LCD is in 8-bit mode and then change to 4-bit mode
-	WriteCommand(0x33);
-	WriteCommand(0x33);
-	WriteCommand(0x32); // Change to 4-bit mode
-
-	// Configure the LCD
-	WriteCommand(0x28);
-	WriteCommand(0x0c);
-	WriteCommand(0x01); // Clear screen command (takes some time)
-	waitms(20); // Wait for clear screen command to finsih.
-}
-
-void LCDprint(char * string, unsigned char line, bit clear)
-{
-	int j;
-
-	WriteCommand(line==2?0xc0:0x80);
-	waitms(5);
-	for(j=0; string[j]!=0; j++)	WriteData(string[j]);// Write the message
-	if(clear) for(; j<CHARS_PER_LINE; j++) WriteData(' '); // Clear the rest of the line
-}
-
-int getsn (char * buff, int len)
-{
-	int j;
-	char c;
-	
-	for(j=0; j<(len-1); j++)
-	{
-		c=getchar();
-		if ( (c=='\n') || (c=='\r') )
-		{
-			buff[j]=0;
-			return j;
-		}
-		else
-		{
-			buff[j]=c;
-		}
-	}
-	buff[j]=0;
-	return len;
-}
-
 void Timer2_ISR (void) interrupt 5
 {
 	TF2H = 0; // Clear Timer2 interrupt flag
@@ -321,142 +220,82 @@ void InitPinADC (unsigned char portno, unsigned char pinno)
  	return ((ADC_at_Pin(pin)*VDD)/0b_0011_1111_1111_1111);
  }
 
-// void printPython(void){
-// 	while(1){
-// 		printf("%f\n", Volts_at_Pin(QFP32_MUX_P1_5));
-// 	}
-// }
 
 void main (void)
 {
-	char *buff;
-	int state = 0;
-	int previous_state = 0;
 	int inrange = 1;
 
 	InitPinADC(1, 0); // Configure P2.5 as analog input
 	InitADC();
-	LCD_4BIT();
 
 	waitms(500); // Give PuTTY a chance to start.
 
 	printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-	// printf("\rEnter 2 numbers between 0-100 (separated by a space): ");
-	// scanf("%d %d\n", &in0,&in1);
 
 	printf("\rEnter 4 spaced numbers (2 for right/left motors) between 0-100: ");
 	scanf("%d %d %d %d\n", &in0,&in1,&in2,&in3);
 
-//	while(1){
-		while(1)
-		{
-			// printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-			// // printf("\rEnter 2 numbers between 0-100 (separated by a space): ");
-			// // scanf("%d %d\n", &in0,&in1);
+	while(1)
+	{
 
-			// printf("\rEnter 4 spaced numbers (2 for right/left motors) between 0-100: ");
-			// scanf("%d %d %d %d\n", &in0,&in1,&in2,&in3);
+			//check if putty input is in range
+			// if (in0<0 || in0>100 || in1<0 || in1>100 || in2<0 || in2>100 || in3<0 || in3>100) {
+			// 	in0 = 50;
+			// 	in1 = 50;
+			// 	in2 = 50;
+			// 	in3 = 50;
+			// 	inrange = 0;
+			// 	break;
+			// }
 
-			if (in0<0 || in0>100 || in1<0 || in1>100 || in2<0 || in2>100 || in3<0 || in3>100) {
-				in0 = 50;
-				in1 = 50;
-				in2 = 50;
-				in3 = 50;
-				inrange = 0;
-				break;
-			}
-
-			if (STOP_BUTTON == 0) {
+			/******* PUSH BUTTON CONTROLS *********/
+			if (STOP_BUTTON == 0) {						// basic commands: go fwd, bck, rgt, lft
 				break;
 				} else if (FWD_BUTTON == 0) {
-					in0 = 30;
-					in1 = 70;
-					in2 = 30;
-					in3 = 70;
-				} else if (BCK_BUTTON == 0) {
 					in0 = 70;
 					in1 = 30;
 					in2 = 70;
 					in3 = 30;
-				} else if (RGT_BUTTON == 0) {
+				} else if (BCK_BUTTON == 0) {
 					in0 = 30;
 					in1 = 70;
+					in2 = 30;
+					in3 = 70;
+				} else if (RGT_BUTTON == 0) {
+					in0 = 70;
+					in1 = 30;
 					in2 = 50;
 					in3 = 50;
 				} else if (LFT_BUTTON == 0) {
 					in0 = 50;
 					in1 = 50;
-					in2 = 30;
-					in3 = 70;
+					in2 = 70;
+					in3 = 30;
 				}
 
-			/****** LCD *******/
-			if (MODE_BUTTON == 0) {
-				if (state == 0) {			//display PWM signal inputs
-					LCDprint("               ",1,1);
-					LCDprint("               ",2,1);
 
-					buff = malloc(17*sizeof(char));
-					sprintf(buff, "PWM1:%d,%d",in0,in1);
-					LCDprint(buff,1,1);
-					free(buff);
+			/****** DISPLAY *******/			// ******* this may be wrong
+				printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
+				printf("Direction:");
+					
 
-					buff = malloc(17*sizeof(char));
-					sprintf(buff, "PWM2:%d,%d",in2,in3);
-					LCDprint(buff,2,1);
-					free(buff);
-
-					state=1;
-
-				} else if (state == 1) {
-					LCDprint("               ",1,1);
-					LCDprint("               ",2,1);
-
-					buff = malloc(17*sizeof(char));
-					sprintf(buff,"Direction:");
-					LCDprint(buff,1,1);
-					free(buff);
-
-					buff = malloc(17*sizeof(char));
-
-					if (in0>in1 && in2==in0 && in3==in1){	//backward (try 70 30 70 30)
-						sprintf(buff,"Backward");
-					} else if (in0<in1 && in2==in0 && in3==in1) {	//forward (try 30 70 30 70)
-						sprintf(buff,"Forward");
-					} else if (in0<in1 && in3<in1) {	//forward left (try 30 70 40 60)
-						sprintf(buff,"Forward Left");
-					} else if (in2<in3 && in1<in3) {	//forward right (try 30 70 40 60)
-						sprintf(buff,"Forward Right");
-					} else if (in0==in1 && in2==in3) {	//stop (try 30 70 30 70)
-						sprintf(buff,"Stop");
-					} else if (in0==in1 && in2>in3) {	//back left (try 50 50 70 30)
-						sprintf(buff,"Back Left");
-					} else if (in0==in1 && in2<in3) {	//back right (try 70 30 50 50)
-						sprintf(buff,"Back Righ");
-					} else {
-						sprintf(buff,"Turning");
-					}
-
-					LCDprint(buff,2,1);
-					free(buff);
-
-					state=0;
+				if (in0>in1 && in2==in0 && in3==in1){	//backward (try 70 30 70 30)
+						printf("Forward");
+				} else if (in0<in1 && in2==in0 && in3==in1) {	//forward (try 30 70 30 70)
+						printf("Backward");
+				} else if (in0<in1 && in3<in1) {	//forward left (try 30 70 40 60)
+						printf("Forward Right");
+				} else if (in2<in3 && in1<in3) {	//forward right (try 30 70 40 60)
+						printf("Forward Left");
+				} else if (in0==in1 && in2==in3) {	//stop (try 30 70 30 70)
+						printf("Stop");
+				} else if (in0==in1 && in2>in3) {	//back left (try 50 50 70 30)
+						printf("Back Right");
+				} else if (in0==in1 && in2<in3) {	//back right (try 70 30 50 50)
+						printf("Back Left");
+				} else {
+						printf("Turning");
 				}
-			}
-			printf("%f\n", Volts_at_Pin(QFP32_MUX_P1_0));
-
-		}
-		// if (inrange) {
-		// 	while (inrange){
-		// 		printPython(); //Comment out for rest of code
-		// 		if (STOP_BUTTON ==0) {
-		// 			break;
-		// 		}
-		//  	}
-	 // 	}
- //	}
- 	//if (!inrange) {
-		printf("\x1b[2J");
-		printf("\rNumbers entered not within 0-100 range\n Program Ended");
-	//}
+	
+	}
 }
