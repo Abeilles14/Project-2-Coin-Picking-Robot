@@ -103,6 +103,21 @@ unsigned char _c51_external_startup()
 	#if ( ((SYSCLK/BAUDRATE)/(12L*2L)) > 0x100)
 		#error Can not configure baudrate using timer 1 
 	#endif
+	
+	P2MDOUT|=0b_0100_0000;
+	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
+	XBR0 = 0b_0000_0001; // Enable UART pins P0.4(TX) and P0.5(RX)
+	XBR1 = 0X00;
+	XBR2 = 0x40; // Enable crossbar and weak pull-ups
+
+
+	// initialize timer0 for system clock
+	TR0=0; // stop timer 0
+	TMOD =(TMOD&0xf0)|0x01; // T0=16bit timer
+	TMR0=TIMER0_RELOAD_VALUE;
+	TR0=1; // start timer 0
+	ET0=1; // enable timer 0 interrupt
+
 	// Configure Uart 0
 	SCON0 = 0x10;
 	TH1 = 0x100-((SYSCLK/BAUDRATE)/(12L*2L));
@@ -112,24 +127,14 @@ unsigned char _c51_external_startup()
 	TR1 = 1; // START Timer1
 	TI = 1;  // Indicate TX0 ready
 
-	P2MDOUT|=0b_0100_0000;
-	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
-	XBR0 = 0b_0000_0001; // Enable UART pins P0.4(TX) and P0.5(RX)
-	XBR1 = 0X00;
-	XBR2 = 0x40; // Enable crossbar and weak pull-ups
-
-	// initialize timer0 for system clock
-	TR0=0; // stop timer 0
-	TMOD =(TMOD&0xf0)|0x01; // T0=16bit timer
-	TMR0=TIMER0_RELOAD_VALUE;
-	TR0=1; // start timer 0
-	ET0=1; // enable timer 0 interrupt
-
 	// Initialize timer 2 for periodic interrupts
 	TMR2CN0=0x00;   // Stop Timer2; Clear TF2;
+	//CKCON0|=0b_0001_0000; // Timer 2 uses the system clock
+	//TMR2RL=(0x10000L-(SYSCLK/10000L)); // Initialize reload value
 	TMR2RL=0; // It will be changed in the music parser
 	TMR2=0xffff;   // Set to reload immediately
 	ET2=1;         // The music parsers enables/disables the timer
+	//TR2=1;         // Start Timer2 (TMR2CN is bit addressable)
 	
 	EA=1; // enable global interrupt
 	return 0;
@@ -380,4 +385,3 @@ void ParseMDL(char * music)
 		}
 	}
 }
-

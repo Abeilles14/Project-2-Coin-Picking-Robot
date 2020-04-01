@@ -169,16 +169,16 @@ void main (void)
 {
 	float v[2];
 	
-	InitPinADC(3, 1);
-	InitPinADC(3, 2);
+	InitPinADC(1, 1);
+	InitPinADC(1, 2);
     InitADC();
 
 	while(1)
 	{
 	    // Read 14-bit value from the pins configured as analog inputs
-		v[0] = Volts_at_Pin(QFP32_MUX_P1_4);
-		v[1] = Volts_at_Pin(QFP32_MUX_P1_5);
-		printf ("P3.1=%7.5fV, P3.2=%7.5fV\r", v[0], v[1]);
+		v[0] = Volts_at_Pin(QFP32_MUX_P1_1);
+		v[1] = Volts_at_Pin(QFP32_MUX_P1_2);
+		printf ("P1.1=%7.5fV, P1.2=%7.5fV\r", v[0], v[1]);
 		waitms(500);
 	 }  
 }	
