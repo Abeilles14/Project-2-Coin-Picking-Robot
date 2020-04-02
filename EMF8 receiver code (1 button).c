@@ -211,8 +211,7 @@ void main (void)
             nrf24_getData(data_array); 
             ctlIn =atoi(data_array);	//converts string recieved from radio into an integer
      
-            printf("IN: %s\r\n", data_array); //Prints data that is recieved, may want to remove
-            
+           
             /*ctlIn is formated as follows: 
               the 5 bit positions carry the values for the push buttons and the analog stick direction
               Starting from the leftmost bit:
@@ -245,7 +244,9 @@ void main (void)
             } else
             	Ybutton=0;
             
-            dir=ctlIn;	
+            dir=ctlIn;
+             printf("IN: %i%i%i%i%i\r\n", Abutton,Bbutton,Xbutton,Ybutton,dir); //Prints data that is recieved, may want to remove
+            	
             	            	
             /* FOR DEBUGGING ONLY
             if(inputs==0)
