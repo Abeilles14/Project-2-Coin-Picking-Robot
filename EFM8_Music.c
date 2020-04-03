@@ -48,6 +48,8 @@ extern volatile int timer_count;
 
 #define SOUNDPIN P2_6
 
+volatile int flag_sound;
+
 volatile int timer_count;
 
 extern const float FTone[];
@@ -58,6 +60,7 @@ unsigned char _c51_external_startup()
 	SFRPAGE = 0x00;
 	WDTCN = 0xDE; //First key
 	WDTCN = 0xAD; //Second key
+	flag_sound = 0;
   
 	VDM0CN=0x80;       // enable VDD monitor
 	RSTSRC=0x02|0x04;  // Enable reset on missing clock detector and VDD
@@ -129,12 +132,11 @@ unsigned char _c51_external_startup()
 
 	// Initialize timer 2 for periodic interrupts
 	TMR2CN0=0x00;   // Stop Timer2; Clear TF2;
-	//CKCON0|=0b_0001_0000; // Timer 2 uses the system clock
-	//TMR2RL=(0x10000L-(SYSCLK/10000L)); // Initialize reload value
-	TMR2RL=0; // It will be changed in the music parser
+	CKCON0|=0b_0001_0000; // Timer 2 uses the system clock
+	TMR2RL=(0x10000L-(SYSCLK/10000L)); // Initialize reload value
 	TMR2=0xffff;   // Set to reload immediately
 	ET2=1;         // The music parsers enables/disables the timer
-	//TR2=1;         // Start Timer2 (TMR2CN is bit addressable)
+	TR2=1;         // Start Timer2 (TMR2CN is bit addressable)
 	
 	EA=1; // enable global interrupt
 	return 0;
@@ -150,7 +152,9 @@ void Timer0_ISR (void) interrupt INTERRUPT_TIMER0
 void Timer2_ISR (void) interrupt INTERRUPT_TIMER2
 {
 	TF2H = 0; // Clear Timer2 interrupt flag
+	if(flag_sound != 0){
 	SOUNDPIN=!SOUNDPIN;
+	}
 }
 
 unsigned char AsciiToHex(char * buff)
@@ -165,7 +169,7 @@ void Menu (void)
     "   1) Start tune\n"
     "   2) Coin tune\n"
     "   3) Win tune\n"
-    "	4) Beyonce\n"
+    "	4) Main Theme\n"
     "Option:" );
 }
 
@@ -195,7 +199,7 @@ void main(void)
         	   ParseMDL(endtune);
         	   break;
         	case '4':
-        		ParseMDL(beyonce);
+        		ParseMDL(maintheme);
         	   break;
 			default:
 			    break;
@@ -205,7 +209,12 @@ void main(void)
 
 // Frequencies for equal-tempered scale, A4 = 440 Hz
 // http://pages.mtu.edu/~suits/notefreqs.html
-const float FTone[] = {
+
+//2020 - April 01: pitch adjusting
+const float FTone[] = 
+{
+	   30.87,32.70,34.65,36.71,38.89,41.20,43.65,46.25,49.00,51.91,
+	   55.00,58.27,
 	   61.74,   65.41,   69.30,   73.42,   77.78,   82.41,   87.31,   92.50,
 	   98.00,  103.83,  110.00,  116.54,  123.47,  130.81,  138.59,  146.83,
 	  155.56,  164.81,  174.61,  185.00,  196.00,  207.65,  220.00,  233.08,
@@ -214,15 +223,14 @@ const float FTone[] = {
 	  622.25,  659.25,  698.45,  739.98,  783.99,  830.60,  879.99,  932.32,
 	  987.76, 1046.50, 1108.72, 1174.65, 1244.50, 1318.50, 1396.90, 1479.97,
 	 1567.97, 1661.21, 1759.99, 1864.64, 1975.52, 2092.99, 2217.45, 2349.30,
-	 2489.00, 2637.00, 2793.81, 2959.94, 3135.94, 3322.42, 3519.98, 3729.29,
-	 3951.04, 4185.98, 4434.90, 4698.61, 4978.00, 5274.01, 5587.62, 5919.88,
-	 6271.89, 6644.84, 7039.96, 7458.58, 7902.09  };
-
+   	 2489.00, 2637.00, 2793.81, 2959.94, 3135.94, 3322.42, 3519.98, 3729.29,
+	 3951.04};
+	 
 //Use timer 2 to play the note.
 void PlayNote(void)
 {
 	int tmsec, toff;
-	
+
 	// Compute in milliseconds the duration of a note or silence using:
 	tmsec= ( (60000L/tempo)*400L ) / actLen;
 
@@ -234,10 +242,13 @@ void PlayNote(void)
 	{
 		TMR2=TMR2RL=(unsigned int)(65536.0-((72.0e6)/(FTone[note]*2*12.0)));
 		TR2=1;
+		//turn flag on when sound out
+		flag_sound = 1;
     }
     else //It is a silence...
     {
     	TR2=0; //Turn off timer 2
+    	flag_sound = 1;
     }
 
 	//Count the milliseconds for the note or silence

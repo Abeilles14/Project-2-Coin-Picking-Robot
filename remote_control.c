@@ -251,51 +251,51 @@ void main (void)
 			/******* PUSH BUTTON CONTROLS *********/
 			if (STOP_BUTTON == 0) {						// basic commands: go fwd, bck, rgt, lft
 				break;
-				} else if (FWD_BUTTON == 0) {
+				} else if (FWD_BUTTON == 0) {		//straight forward
 					in0 = 70;
 					in1 = 30;
 					in2 = 70;
 					in3 = 30;
-				} else if (BCK_BUTTON == 0) {
+				} else if (BCK_BUTTON == 0) {		//straight back
 					in0 = 30;
 					in1 = 70;
 					in2 = 30;
 					in3 = 70;
-				} else if (RGT_BUTTON == 0) {
+				} else if (RGT_BUTTON == 0) { 		//turn right on spot
 					in0 = 70;
 					in1 = 30;
-					in2 = 50;
-					in3 = 50;
-				} else if (LFT_BUTTON == 0) {
-					in0 = 50;
-					in1 = 50;
+					in2 = 30;
+					in3 = 70;
+				} else if (LFT_BUTTON == 0) {		//left on spot
+					in0 = 70;
+					in1 = 30;
 					in2 = 70;
 					in3 = 30;
 				}
 
 
 			/****** DISPLAY *******/			// ******* this may be wrong
-				printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-				printf("Direction:");
+				// printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
+				// printf("Direction:");
 					
 
-				if (in0>in1 && in2==in0 && in3==in1){	//backward (try 70 30 70 30)
-						printf("Forward");
-				} else if (in0<in1 && in2==in0 && in3==in1) {	//forward (try 30 70 30 70)
-						printf("Backward");
-				} else if (in0<in1 && in3<in1) {	//forward left (try 30 70 40 60)
-						printf("Forward Right");
-				} else if (in2<in3 && in1<in3) {	//forward right (try 30 70 40 60)
-						printf("Forward Left");
-				} else if (in0==in1 && in2==in3) {	//stop (try 30 70 30 70)
-						printf("Stop");
-				} else if (in0==in1 && in2>in3) {	//back left (try 50 50 70 30)
-						printf("Back Right");
-				} else if (in0==in1 && in2<in3) {	//back right (try 70 30 50 50)
-						printf("Back Left");
-				} else {
-						printf("Turning");
-				}
+				// if (in0>in1 && in2==in0 && in3==in1){	//backward (try 70 30 70 30)
+				// 		printf("Forward");
+				// } else if (in0<in1 && in2==in0 && in3==in1) {	//forward (try 30 70 30 70)
+				// 		printf("Backward");
+				// } else if (in0<in1 && in3<in1) {	//forward left (try 30 70 40 60)
+				// 		printf("Forward Right");
+				// } else if (in2<in3 && in1<in3) {	//forward right (try 30 70 40 60)
+				// 		printf("Forward Left");
+				// } else if (in0==in1 && in2==in3) {	//stop (try 30 70 30 70)
+				// 		printf("Stop");
+				// } else if (in0==in1 && in2>in3) {	//back left (try 50 50 70 30)
+				// 		printf("Back Right");
+				// } else if (in0==in1 && in2<in3) {	//back right (try 70 30 50 50)
+				// 		printf("Back Left");
+				// } else {
+				// 		printf("Turning");
+				// }
 	
 	}
 }

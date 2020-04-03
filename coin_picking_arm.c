@@ -288,7 +288,6 @@ void InitPinADC (unsigned char portno, unsigned char pinno)
 
 void Timer0_ISR (void) interrupt INTERRUPT_TIMER0
 {
-    P2_2=!P2_2;
 	TMR0=TIMER0_RELOAD_VALUE;
 	timer_count++;
 }
@@ -373,153 +372,15 @@ unsigned char AsciiToHex(char * buff)
 	return ((buff[0]-'0')*0x10)+(buff[1]-'0');
 }
 
-void Menu (void)
-{
-    printf(
-    "\n\nMenu:\n"
-    "   1) Start tune\n"
-    "   2) Coin tune\n"
-    "   3) Win tune\n"
-    "Option:" );
-}
-
-
-void arm_pick_up(void) {			//picks up coins
-	PWMMAG = 0;	
-	waitms(500);
-	arm_flag = 1;
-	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
-	PWMMAG = 1;						//electromagnet on
-	waitms(500);
-	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
-	waitms(500);
-	arm_flag = 1;
-	pwm_reload1=0x10000L-(SYSCLK*0.6*1.0e-3)/12.0;		//pick up
-	waitms(500);
-	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
-	waitms(500);
-	arm_flag = 1;
-	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
-	PWMMAG = 0;										//Electromagnet off
-	waitms(500);
-	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*1.2*1.1e-3)/12.0;		//centered
-	waitms(500);
-}
-
-void arm_reset(void) {		//resets and centers arm
-	PWMMAG = 0;											//Electromagnet off
-	arm_flag = 1;
-	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
-	waitms(500);
-	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
-	waitms(500);
-}
-
-void main (void)
-{
-	int state = 0;
-	int previous_state = 0;
-	int inrange = 1;
-	unsigned long frequency;
-	unsigned long freq_init;
-
-	char c;
-	sound_flag = 0;
-	
-	TIMER0_Init();
-
-   count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
-   waitms(500);		//wait for putty to start
-
-  	//initial frequency  
-   	TL0=0;
-	TH0=0;
-	overflow_count=0;
-	TF0=0;
-	TR0=1; // Start Timer/Counter 0
-		
-	waitms(1000);
-	TR0=0; // Stop Timer/Counter 0
-	freq_init=overflow_count*0x10000L+TH0*0x100L+TL0;
-
-	while(freq_init< 50000);	//ensures that frequency readings are correct
-
-   	arm_reset();
-
-	// in0 = 60;
-	// in1 = 40;
-	// in2 = 60;
-	// in3 = 40;
-
-	// char c;
-
-	// sound_flag = 1;
-	// timer_count=0;
-	// while(timer_count<1000);
-	
-	// printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
- //    printf("ANSI MUSIC V2.0: by Jesus Calvino-Fraga 2002-2018\n");
-
-	 while(1)
-	 {
-		TL0=0;
-		TH0=0;
-		overflow_count=0;
-		TF0=0;
-		TR0=1; // Start Timer/Counter 0
-		
-		waitms(1000);
-		TR0=0; // Stop Timer/Counter 0
-		frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
-
-		printf("\rf=%luHz", frequency);
-		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
-
-		if (frequency >= freq_init + 100) {
-			in0 = 20;
-			in1 = 80;
-			in2 = 20;
-			in3 = 80;
-			waitms(500);
-			in0 = 50;
-			in1 = 50;
-			in2 = 50;
-			in3 = 50;
-			arm_pick_up();
-		} else {
-			in0 = 60;
-			in1 = 40;
-			in2 = 60;
-			in3 = 40;
-		}
-
-
-		// Menu();
-  //       c=getchar();
-  //       switch(c)
-  //       {
-  //       	case '1':
-  //       	   ParseMDL(starttune);
-  //       	   break;
-  //       	case '2':
-  //       	   ParseMDL(cointune);
-  //       	   break;
-  //        	case '3':
-  //       	   ParseMDL(endtune);
-  //       	   break;
-		// 	default:
-		//  	break;
-  //      }
-   }
-}
 
 // Frequencies for equal-tempered scale, A4 = 440 Hz
 // http://pages.mtu.edu/~suits/notefreqs.html
-const float FTone[] = {
+
+//2020 - April 01: pitch adjusting
+const float FTone[] = 
+{
+	   30.87,32.70,34.65,36.71,38.89,41.20,43.65,46.25,49.00,51.91,
+	   55.00,58.27,
 	   61.74,   65.41,   69.30,   73.42,   77.78,   82.41,   87.31,   92.50,
 	   98.00,  103.83,  110.00,  116.54,  123.47,  130.81,  138.59,  146.83,
 	  155.56,  164.81,  174.61,  185.00,  196.00,  207.65,  220.00,  233.08,
@@ -528,15 +389,14 @@ const float FTone[] = {
 	  622.25,  659.25,  698.45,  739.98,  783.99,  830.60,  879.99,  932.32,
 	  987.76, 1046.50, 1108.72, 1174.65, 1244.50, 1318.50, 1396.90, 1479.97,
 	 1567.97, 1661.21, 1759.99, 1864.64, 1975.52, 2092.99, 2217.45, 2349.30,
-	 2489.00, 2637.00, 2793.81, 2959.94, 3135.94, 3322.42, 3519.98, 3729.29,
-	 3951.04, 4185.98, 4434.90, 4698.61, 4978.00, 5274.01, 5587.62, 5919.88,
-	 6271.89, 6644.84, 7039.96, 7458.58, 7902.09  };
-
+   	 2489.00, 2637.00, 2793.81, 2959.94, 3135.94, 3322.42, 3519.98, 3729.29,
+	 3951.04};
+	 
 //Use timer 2 to play the note.
 void PlayNote(void)
 {
 	int tmsec, toff;
-	
+
 	// Compute in milliseconds the duration of a note or silence using:
 	tmsec= ( (60000L/tempo)*400L ) / actLen;
 
@@ -548,6 +408,7 @@ void PlayNote(void)
 	{
 		TMR2=TMR2RL=(unsigned int)(65536.0-((72.0e6)/(FTone[note]*2*12.0)));
 		TR2=1;
+		//turn flag on when sound out
     }
     else //It is a silence...
     {
@@ -577,7 +438,7 @@ void ParseMDL(char * music)
 	
 	cur=0;
 	style=NORMAL;
-	TR2=0;		
+	//TR2=0;		
 	
 	while(music[cur] && (RI==0))
 	{
@@ -702,6 +563,152 @@ void ParseMDL(char * music)
 			break;
 		}
 	}
+	//TR2=1;
 }
+
+void arm_pick_up(void) {			//picks up coins
+	PWMMAG = 0;	
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*2.3*1.0e-3)/12.0;		//down
+	PWMMAG = 1;						//electromagnet on
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*0.6*1.0e-3)/12.0;		//pick up
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
+	waitms(500);
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
+	PWMMAG = 0;										//Electromagnet off
+	//ParseMDL(cointune);
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.1e-3)/12.0;		//centered
+	waitms(500);
+}
+
+void arm_reset(void) {		//resets and centers arm
+	PWMMAG = 0;											//Electromagnet off
+	arm_flag = 1;
+	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
+	waitms(500);
+	arm_flag = 0;
+	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
+	waitms(500);
+}
+
+void main (void)
+{
+	unsigned long frequency;
+	unsigned long freq_init;
+	float volt_init[2];
+	float v[2];
+	int coin_count = 0;
+	char c;
+
+	sound_flag = 1;
+	ParseMDL(starttune);		//mario start song
+	sound_flag = 0;
+	
+	TIMER0_Init();
+
+	InitPinADC(1, 1);
+	InitPinADC(1, 2);
+    InitADC();
+
+    count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
+    waitms(500);		//wait for putty to start
+
+    /*********** FREQUENCY ***********/
+  	//initial frequency  
+   	TL0=0;
+	TH0=0;
+	overflow_count=0;
+	TF0=0;
+	TR0=1; // Start Timer/Counter 0
+		
+	waitms(1000);
+	TR0=0; // Stop Timer/Counter 0
+	freq_init=overflow_count*0x10000L+TH0*0x100L+TL0;
+
+	while(freq_init< 50000);	//ensures that frequency readings are correct
+
+	/*********** ADC Voltage **********/
+	volt_init[0] = Volts_at_Pin(QFP32_MUX_P1_1);
+	volt_init[1] = Volts_at_Pin(QFP32_MUX_P1_2);
+
+   	arm_reset();
+
+	in0 = 60;
+	in1 = 40;
+	in2 = 60;
+	in3 = 40;
+
+	while(1)
+	{
+		TL0=0;
+		TH0=0;
+		overflow_count=0;
+		TF0=0;
+		TR0=1; // Start Timer/Counter 0
+		
+		waitms(1000);
+		TR0=0; // Stop Timer/Counter 0
+		frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
+		v[0] = Volts_at_Pin(QFP32_MUX_P1_1);
+		v[1] = Volts_at_Pin(QFP32_MUX_P1_2);
+
+
+		printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
+		printf("\033[%d;%dH", 1, 1);   //set cursor
+		printf("\rMetal Detector: f=%luHz\n", frequency);
+		printf("\rPerimeter Detector: P1.1=%7.5fV, P1.2=%7.5fV\r", v[0], v[1]);
+
+		//CHECK METAL DETECTOR
+		// if (frequency >= freq_init + 100) {
+		// 	in0 = 20;
+		// 	in1 = 80;
+		// 	in2 = 20;
+		// 	in3 = 80;
+		// 	waitms(500);
+		// 	in0 = 50;
+		// 	in1 = 50;
+		// 	in2 = 50;
+		// 	in3 = 50;
+		// 	arm_pick_up();
+		//  ParseMDL(cointune);
+		// 	coin_count++;
+		// } else {
+		// 	in0 = 60;
+		// 	in1 = 40;
+		// 	in2 = 60;
+		// 	in3 = 40;
+		// }
+
+		//CHECK PERIMETER DETECTOR
+		if ((v[0] >= volt_init[0] + 0.200) || (v[1] >= volt_init[1] + 0.200)){
+			in0 = 80;
+			in1 = 20;
+			in2 = 20;
+			in3 = 80;
+			waitms(1000);
+
+		}
+
+		/********** SWITCH TO REMOTE CONTROL ************/
+		// while(coin_count == 3){
+
+
+		// }
+
+
+    }
+}
+
 
 
