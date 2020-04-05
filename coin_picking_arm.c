@@ -3,17 +3,67 @@
 //  Copyright (c) 2010-2018 Jesus Calvino-Fraga
 //  ~C51~
 
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <EFM8LB1.h>
-//#include "Tunes.h"
-//#include "EFM8_Music.c"
+#include <ctype.h>
+#include <string.h>
+#include "Tunes.h"
+#include "nrf24.h"
 
-// ~C51~  
+#define	PAUSE	0
+#define	BASE_C	1
+#define	BASE_Cs	2
+#define	BASE_D	3
+#define	BASE_Ds	4
+#define	BASE_E	5
+#define	BASE_F	6
+#define	BASE_Fs	7
+#define	BASE_G	8
+#define	BASE_Gs	9
+#define	BASE_A	10
+#define	BASE_As	11
+#define	BASE_B	12
+
+#define	NORMAL		7
+#define	LEGATO		8
+#define	STACCATO	3
 
 #define SYSCLK 72000000L
 #define BAUDRATE 115200L
 #define RELOAD_10MS (0x10000L-(SYSCLK/(12L*100L)+1))
+#define F_SCK_MAX 2000000L  // Max SCK freq (Hz)
+
+#define FORWARD	8
+#define BACKWARD 2
+#define LEFT 4 
+#define RIGHT 6
+#define FORWARD_RIGHT 9
+#define FORWARD_LEFT 7
+#define BACKWARD_RIGHT 3
+#define BACKWARD_LEFT 1
+#define NO_MOVEMENT 5
+
+#define EQ(A,B) !strcmp((A),(B))
+
+void ParseMDL(char * music);
+
+#define BUFFSIZE 15
+char buff[BUFFSIZE+1];
+const char what[]="What?\n";
+
+unsigned char style, octave, note, tempo;
+int actLen, defLen, cur;
+extern volatile int timer_count;
+
+// timer 0 used for systemclock
+#define TIMER0_RELOAD_VALUE (65536L-((SYSCLK/12L)/1000L))	////!!!!!!!!!!!!
+
+#define SOUNDPIN P2_6
+
+volatile int timer_count;
+
+extern const float FTone[];
 
 #define OUT0 P2_4		//motor 1
 #define OUT1 P2_3
@@ -43,8 +93,15 @@ volatile unsigned char pwm_state0 = 0;
 volatile unsigned char pwm_state1 = 0;
 volatile unsigned char count20ms;
 volatile unsigned int arm_flag = 0;
+volatile unsigned int sound_flag = 0;
 
 unsigned char overflow_count;
+
+// int ctlIn,dir,Abutton,Bbutton,Xbutton,Ybutton;
+// uint8_t temp;
+// xdata uint8_t data_array[32];
+// const uint8_t tx_address[] = "TXADD";
+// const uint8_t rx_address[] = "RXADD";
 
 char _c51_external_startup (void)
 {
@@ -93,6 +150,15 @@ char _c51_external_startup (void)
 	#else
 		#error SYSCLK must be either 12250000L, 24500000L, 48000000L, or 72000000L
 	#endif
+
+	#if ( ((SYSCLK/BAUDRATE)/(12L*2L)) > 0x100)
+		#error Can not configure baudrate using timer 1 
+	#endif
+
+		// Configure Uart 0
+	#if (((SYSCLK/BAUDRATE)/(2L*12L))>0xFFL)
+		#error Timer 0 reload value is incorrect because (SYSCLK/BAUDRATE)/(2L*12L) > 0xFF
+	#endif
 	
 	// Configure the pins used for square output
 	P1MDOUT|=0b_1000_0000;
@@ -102,10 +168,12 @@ char _c51_external_startup (void)
 	XBR1     = 0X10; // Enable T0 on P0.0
 	XBR2     = 0x40; // Enable crossbar and weak pull-ups
 
-	// Configure Uart 0
-	#if (((SYSCLK/BAUDRATE)/(2L*12L))>0xFFL)
-		#error Timer 0 reload value is incorrect because (SYSCLK/BAUDRATE)/(2L*12L) > 0xFF
-	#endif
+	// initialize timer0 for system clock
+	TR0=0; // stop timer 0
+	TMOD =(TMOD&0xf0)|0x01; // T0=16bit timer
+	TMR0=TIMER0_RELOAD_VALUE;
+	TR0=1; // start timer 0
+	ET0=1; // enable timer 0 interrupt
 
 	// Configure Uart 0
 	SCON0 = 0x10;
@@ -116,6 +184,11 @@ char _c51_external_startup (void)
 	TMOD |=  0x20;                       
 	TR1 = 1; // START Timer1
 	TI = 1;  // Indicate TX0 ready
+
+	// SPI inititialization
+	// SPI0CKR = (SYSCLK/(2*F_SCK_MAX))-1;
+	// SPI0CFG = 0b_0100_0000; //SPI in master mode
+	// SPI0CN0 = 0b_0000_0001; //SPI enabled and in three wire mode
 
 	// Initialize timer 2 for periodic interrupts
 	TMR2CN0=0x00;   // Stop Timer2; Clear TF2;
@@ -154,6 +227,24 @@ void InitADC (void)
 }
 
 // Uses Timer3 to delay <us> micro-seconds. 
+// void Timer3us(unsigned char us)
+// {
+// 	unsigned char i;               // usec counter
+	
+// 	// The input for Timer 3 is selected as SYSCLK by setting T3ML (bit 6) of CKCON0:
+// 	CKCON0|=0b_0100_0000;
+	
+// 	TMR3RL = (-(SYSCLK)/1000000L); // Set Timer3 to overflow in 1us.
+// 	TMR3 = TMR3RL;                 // Initialize Timer3 for first overflow
+	
+// 	TMR3CN0 = 0x04;                 // Sart Timer3 and clear overflow flag
+// 	for (i = 0; i < us; i++)       // Count <us> overflows
+// 	{
+// 		while (!(TMR3CN0 & 0x80));  // Wait for overflow
+// 		TMR3CN0 &= ~(0x80);         // Clear overflow indicator
+// 	}
+// 	TMR3CN0 = 0 ;                   // Stop Timer3 and clear overflow flag
+// }
 void Timer3us(unsigned char us)
 {
 	unsigned char i;               // usec counter
@@ -169,6 +260,11 @@ void Timer3us(unsigned char us)
 	{
 		while (!(TMR3CN0 & 0x80));  // Wait for overflow
 		TMR3CN0 &= ~(0x80);         // Clear overflow indicator
+		if (TF0)
+		{
+		   TF0=0;
+		   overflow_count++;
+		}
 	}
 	TMR3CN0 = 0 ;                   // Stop Timer3 and clear overflow flag
 }
@@ -184,6 +280,50 @@ void waitms (unsigned int ms)
 		Timer3us(250);
 	}
 }
+
+
+// uint8_t spi_transfer(uint8_t tx)
+// {
+//    SPI0DAT=tx;
+//    while(!SPIF);
+//    SPIF=0;
+//    return SPI0DAT;
+// }
+
+// void safe_gets(char *s, int n, int to)
+// {
+// 	int to_cnt=0;
+// 	unsigned char j=0;
+// 	unsigned char c, us_cnt=0;
+	
+// 	while(1)
+// 	{
+// 		if(RI)
+// 		{
+// 			to_cnt=0;
+// 			us_cnt=0;
+// 			c=getchar();
+// 			if ( (c=='\n') || (c=='\r') ) break;
+// 			if(j<(n-1))
+// 			{
+// 				s[j]=c;
+// 				j++;
+// 			}
+// 		}
+// 		else
+// 		{
+// 			Timer3us(20);
+// 			us_cnt++;
+// 			if(us_cnt==50)
+// 			{
+// 				to_cnt++;
+// 				us_cnt=0;
+// 			}
+// 		}
+// 		if(to_cnt==to) break;
+// 	}
+// 	s[j]=0;
+// }
 
 void TIMER0_Init(void)
 {
@@ -236,22 +376,31 @@ void InitPinADC (unsigned char portno, unsigned char pinno)
  }
 
 
-void Timer2_ISR (void) interrupt 5
+void Timer0_ISR (void) interrupt INTERRUPT_TIMER0
+{
+	TMR0=TIMER0_RELOAD_VALUE;
+	timer_count++;
+}
+
+void Timer2_ISR (void) interrupt INTERRUPT_TIMER2
 {
 	TF2H = 0; // Clear Timer2 interrupt flag
 	
-	pwm_count0++;
-	if(pwm_count0>100) pwm_count0=0;
-	
-	OUT0=pwm_count0>in0?0:1;
-	OUT1=pwm_count0>in1?0:1;
+	if (sound_flag == 1) {
+		SOUNDPIN=!SOUNDPIN;
+	} else {
+		pwm_count0++;
+		if(pwm_count0>100) pwm_count0=0;
+		
+		OUT0=pwm_count0>in0?0:1;
+		OUT1=pwm_count0>in1?0:1;
 
-	pwm_count1++;
-	if(pwm_count1>100) pwm_count1=0;
-	
-	OUT2=pwm_count1>in2?0:1;
-	OUT3=pwm_count1>in3?0:1;
-
+		pwm_count1++;
+		if(pwm_count1>100) pwm_count1=0;
+		
+		OUT2=pwm_count1>in2?0:1;
+		OUT3=pwm_count1>in3?0:1;
+	}
 }
 
 void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
@@ -305,6 +454,206 @@ void Timer5_ISR (void) interrupt INTERRUPT_TIMER5
 
 }
 
+unsigned char AsciiToHex(char * buff)
+{
+	return ((buff[0]-'0')*0x10)+(buff[1]-'0');
+}
+
+
+// Frequencies for equal-tempered scale, A4 = 440 Hz
+// http://pages.mtu.edu/~suits/notefreqs.html
+
+//2020 - April 01: pitch adjusting
+const float FTone[] = 
+{
+	   30.87,32.70,34.65,36.71,38.89,41.20,43.65,46.25,49.00,51.91,
+	   55.00,58.27,
+	   61.74,   65.41,   69.30,   73.42,   77.78,   82.41,   87.31,   92.50,
+	   98.00,  103.83,  110.00,  116.54,  123.47,  130.81,  138.59,  146.83,
+	  155.56,  164.81,  174.61,  185.00,  196.00,  207.65,  220.00,  233.08,
+	  246.94,  261.62,  277.18,  293.66,  311.13,  329.63,  349.23,  369.99,
+	  391.99,  415.30,  440.00,  466.16,  493.88,  523.25,  554.36,  587.33,
+	  622.25,  659.25,  698.45,  739.98,  783.99,  830.60,  879.99,  932.32,
+	  987.76, 1046.50, 1108.72, 1174.65, 1244.50, 1318.50, 1396.90, 1479.97,
+	 1567.97, 1661.21, 1759.99, 1864.64, 1975.52, 2092.99, 2217.45, 2349.30,
+   	 2489.00, 2637.00, 2793.81, 2959.94, 3135.94, 3322.42, 3519.98, 3729.29,
+	 3951.04};
+	 
+//Use timer 2 to play the note.
+void PlayNote(void)
+{
+	int tmsec, toff;
+
+	// Compute in milliseconds the duration of a note or silence using:
+	tmsec= ( (60000L/tempo)*400L ) / actLen;
+
+	// Set the time when the sound will be turned off:
+	toff=(tmsec*style)/8L;
+
+	// Start the sound
+	if (note!=0)
+	{
+		TMR2=TMR2RL=(unsigned int)(65536.0-((72.0e6)/(FTone[note]*2*12.0)));
+		TR2=1;
+		//turn flag on when sound out
+		//sound_flag = 1;
+    }
+    else //It is a silence...
+    {
+    	TR2=0; //Turn off timer 2
+    	//sound_flag = 0;
+    }
+
+	//Count the milliseconds for the note or silence
+	timer_count=0;
+	while(timer_count<tmsec)
+	{
+		if(timer_count>toff) TR2=0; //Turn off timer 2
+	}
+	TR2=0; //Turn off timer 2
+}
+
+int GetNumber(char * music)
+{
+	int n=0;
+	/*Get the number*/
+	while (isdigit(music[cur]) && music[cur]) n=(n*10)+(music[cur++]-'0');
+	return n;
+}
+
+void ParseMDL(char * music)
+{
+	bit getout;
+	
+	cur=0;
+	style=NORMAL;
+	TR2=0;		
+	
+	while(music[cur] && (RI==0))
+	{
+	    //putchar(music[cur]);
+		switch (toupper(music[cur]))
+		{
+			case '>':
+				cur++;
+				octave++;
+			break;
+	
+			case '<':
+				cur++;
+				octave--;
+			break;
+	
+			case 'O':
+				cur++;
+				octave=GetNumber(music);
+			break;
+	
+			/*Choose a note or pause*/
+			case 'A': case 'B': case 'C': case 'D':
+			case 'E': case 'F': case 'G': case 'P':
+	
+				/*Select the note number from name and octave*/
+				note=(octave*12);
+				switch (toupper(music[cur])-'A')
+				{
+					case 0:  note+=BASE_A; break;
+					case 1:  note+=BASE_B; break;
+					case 2:  note+=BASE_C; break;
+					case 3:  note+=BASE_D; break;
+					case 4:  note+=BASE_E; break;
+					case 5:  note+=BASE_F; break;
+					case 6:  note+=BASE_G; break;
+					default: note =PAUSE ; break;
+				}
+		
+				cur++;
+				actLen=defLen;
+				
+				getout=0;
+				while(!getout)
+				{
+					switch (toupper(music[cur]))
+					{
+						case '+': case '#':
+							cur++;
+							note++;
+						break;
+	
+						case '-':
+							cur++;
+							note--;
+						break;
+	
+						case '.':
+							cur++;
+							actLen=(actLen*2)/3;
+						break;
+						
+						/*Get note duration*/
+						case '0': case '1': case '2': case '3': case '4': 
+						case '5': case '6': case '7': case '8': case '9': 
+							actLen=GetNumber(music)*100;/*Increase resolution*/
+						break;
+	
+						default:
+							/*Play note and continue*/
+							PlayNote();
+							getout=1;
+						break;
+					}
+				}
+			break;
+	
+			/*Play a note by its number*/
+			case 'N':
+				cur++;
+				note=GetNumber(music);
+				actLen=defLen;
+				PlayNote();
+			break;
+			
+			/*Set the default note duration*/
+			case 'L':
+				cur++;
+				defLen=GetNumber(music)*100;/*Increase resolution*/
+			break;
+	
+			/*Choose the playing style. Ignore foreground and
+			background commands, since only background works here*/
+			case 'M':
+				cur++; 
+				switch (toupper(music[cur]))
+				{
+					case 'N': style=NORMAL;   break;
+					case 'L': style=LEGATO;   break;
+					case 'S': style=STACCATO; break;
+				}
+				cur++;
+			break;
+	
+			/*Select the tempo*/
+			case 'T':
+				cur++;
+				tempo=GetNumber(music);
+			break;
+	
+			/*Ignore and discard substrings.*/
+			case 'X':
+				cur++;
+				/*Discard substring*/
+				while ((music[cur]!='$') && music[cur]) cur++;
+				cur++;/*Discard also the "$"*/
+			break;
+			
+			/*Unknown commands and blanks are just ignored and discarded*/
+			default:
+				cur++;
+			break;
+		}
+	}
+	//TR2=1;
+}
 
 void arm_pick_up(void) {			//picks up coins
 	PWMMAG = 0;	
@@ -320,11 +669,12 @@ void arm_pick_up(void) {			//picks up coins
 	pwm_reload1=0x10000L-(SYSCLK*0.6*1.0e-3)/12.0;		//pick up
 	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
+	pwm_reload0=0x10000L-(SYSCLK*0.8*1.0e-3)/12.0;		//carry right
 	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
 	PWMMAG = 0;										//Electromagnet off
+	//ParseMDL(cointune);
 	waitms(500);
 	arm_flag = 0;
 	pwm_reload0=0x10000L-(SYSCLK*1.2*1.1e-3)/12.0;		//centered
@@ -341,23 +691,45 @@ void arm_reset(void) {		//resets and centers arm
 	waitms(500);
 }
 
+/*********** MAIN CODE ***********/
 void main (void)
 {
-	int state = 0;
-	int previous_state = 0;
-	int inrange = 1;
 	unsigned long frequency;
 	unsigned long freq_init;
+	float volt_init[2];
+	float v[2];
+	int coin_count = 0;
+	char c;
+
+	//SOUND
+	// sound_flag = 1;
+	// ParseMDL(starttune);		//mario start song
+	 sound_flag = 0;
 	
+	//TIMER
 	TIMER0_Init();
 
-   count20ms=0; // Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
-   waitms(500);		//wait for putty to start
+	//ADC
+	InitPinADC(1, 1);
+	InitPinADC(1, 2);
+    InitADC();
 
-	// InitPinADC(1, 0); // Configure P2.5 as analog input
-	// InitADC();
-	// LCD_4BIT();
+    //RECIEVER
+ //    nrf24_init(); 					// init hardware pins
+ //    nrf24_config(120,32); 			// Configure channel and payload size
+ //    nrf24_tx_address(rx_address);	//set device as reciever
+	// nrf24_rx_address(tx_address);
 
+    count20ms=0; 		// Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
+    waitms(500);		//wait for putty to start
+
+    /*********** ADC Voltage **********/
+	volt_init[0] = Volts_at_Pin(QFP32_MUX_P1_1);
+	volt_init[1] = Volts_at_Pin(QFP32_MUX_P1_2);
+	//printf("\rPerimeter Detector: P1.1=%7.5fV, P1.2=%7.5fV\r", volt_init[0], volt_init[1]);
+
+
+    /*********** FREQUENCY ***********/
   	//initial frequency  
    	TL0=0;
 	TH0=0;
@@ -365,18 +737,19 @@ void main (void)
 	TF0=0;
 	TR0=1; // Start Timer/Counter 0
 		
-	waitms(1000);
+	waitms(200);
 	TR0=0; // Stop Timer/Counter 0
 	freq_init=overflow_count*0x10000L+TH0*0x100L+TL0;
+	//printf("\rMetal Detector: f=%luHz\n", freq_init);
 
-	while(freq_init< 50000);	//ensures that frequency readings are correct
+	//while(freq_init< 50000);	//ensures that frequency readings are correct
 
    	arm_reset();
 
-	in0 = 60;
-	in1 = 40;
-	in2 = 60;
-	in3 = 40;
+	in0 = 80;
+	in1 = 20;
+	in2 = 80;
+	in3 = 20;
 
 	while(1)
 	{
@@ -386,14 +759,22 @@ void main (void)
 		TF0=0;
 		TR0=1; // Start Timer/Counter 0
 		
-		waitms(1000);
+		waitms(200);	//required!!
 		TR0=0; // Stop Timer/Counter 0
 		frequency=overflow_count*0x10000L+TH0*0x100L+TL0;
 
-		printf("\rf=%luHz", frequency);
-		printf("\x1b[0K"); // ANSI: Clear from cursor to end of line.
+		v[0] = Volts_at_Pin(QFP32_MUX_P1_1);
+		v[1] = Volts_at_Pin(QFP32_MUX_P1_2);
 
-		if (frequency >= freq_init + 100) {
+
+		printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
+		printf("\033[%d;%dH", 1, 1);   //set cursor
+		printf("\rMetal Detector: f=%luHz\n", frequency);
+		printf("\rPerimeter Detector: P1.1=%7.5fV, P1.2=%7.5fV\n", v[0], v[1]);
+		printf("\rCoins: %d", coin_count);
+
+		//CHECK METAL DETECTOR
+		if (frequency >= freq_init + 20) {
 			in0 = 20;
 			in1 = 80;
 			in2 = 20;
@@ -404,12 +785,178 @@ void main (void)
 			in2 = 50;
 			in3 = 50;
 			arm_pick_up();
+			//sound_flag = 1;
+		 	//ParseMDL(cointune);
+		 	//sound_flag = 0;
+			coin_count++;
 		} else {
+			in0 = 80;
+			in1 = 20;
+			in2 = 80;
+			in3 = 20;
+		}
+
+		//CHECK PERIMETER DETECTOR
+		if ((v[0] >= volt_init[0] + 1.200) || (v[1] >= volt_init[1] + 1.200)){
+			in0 = 20;
+			in1 = 80;
+			in2 = 20;
+			in3 = 80;
+			waitms(1000);
+			in0 = 80;
+			in1 = 20;
+			in2 = 20;
+			in3 = 80;
+			waitms(1500);
 			in0 = 60;
 			in1 = 40;
 			in2 = 60;
 			in3 = 40;
 		}
-	}
 
+		/********** SWITCH TO REMOTE CONTROL ************/
+		// while(coin_count == 3){					//once 3 coins are picked up
+		// 	if(nrf24_dataReady())
+  //       {
+  //           nrf24_getData(data_array); 
+  //           ctlIn =atoi(data_array);	//converts string recieved from radio into an integer
+     
+           
+  //           /*ctlIn is formated as follows: 
+  //             the 5 bit positions carry the values for the push buttons and the analog stick direction
+  //             Starting from the leftmost bit:
+  //             A button  (0 or 1)
+  //             B button  (0 or 1)
+  //             X button  (0 or 1)
+  //             Y button  (0 or 1)
+  //             direction (1-9) */
+            						
+  //           if(ctlIn>=10000){
+  //           	Abutton=1;
+  //           	ctlIn=ctlIn%10000;	//removes the leftmost bit if set
+  //           } else
+  //           	Abutton=0;
+            
+  //           if(ctlIn>=1000){
+  //           	Bbutton=1;
+  //           	ctlIn=ctlIn%1000;	//removes the leftmost bit if set
+  //           } else
+  //           	Bbutton=0;
+            	
+  //           if(ctlIn>=100){
+  //           	Xbutton=1;
+  //           	ctlIn=ctlIn%100;	//removes the leftmost bit if set
+  //           } else 
+  //           	Xbutton=0;
+  //           if(ctlIn>=10){
+  //           	Ybutton=1;
+  //           	ctlIn=ctlIn%10;		//removes the leftmost bit if set
+  //           } else
+  //           	Ybutton=0;
+            
+  //           dir=ctlIn;
+  //            printf("IN: %i%i%i%i%i\r\n", Abutton,Bbutton,Xbutton,Ybutton,dir); //Prints data that is recieved, may want to remove
+            	
+            	            	
+  //           /* FOR DEBUGGING ONLY
+  //           if(inputs==0)
+  //           	printf("A button pressed");
+  //           printf("ctlIn:%i",ctlIn);
+  //           printf("button=%i,dir=%i",button,dir);	
+  //           */         	
+  //       }
+        
+  //       if(RI) //Other radio junk, stuff to do with handling lost messages and such
+  //       {
+  //       	//safe_gets(data_array, sizeof(data_array), 2000);
+  //       	gets(data_array);
+		//     printf("\r\n");    
+	 //        nrf24_send(data_array);        
+		//     while(nrf24_isSending());
+		//     temp = nrf24_lastMessageStatus();
+		// 	if(temp == NRF24_MESSAGE_LOST)
+		//     {                    
+		//         printf("> Message lost\r\n"); //for debugging, may want to remove
+		//         dir = NO_MOVEMENT; //makes robot not move if message is lost
+		//         Abutton=0;    
+		//     }
+		// 	nrf24_powerDown();
+  //   		nrf24_powerUpRx();
+		// }
+
+		// /* Transmitter code, not needed while being used as reciever
+		// if(P3_7==0)
+		// {
+		// 	while(P3_7==0);
+		// 	strcpy(data_array, "Button test");
+	 //        nrf24_send(data_array);
+		//     while(nrf24_isSending());
+		//     temp = nrf24_lastMessageStatus();
+		// 	if(temp == NRF24_MESSAGE_LOST)
+		//     {                    
+		//         printf("> Message lost\r\n");    
+		//     }
+		// 	nrf24_powerDown();
+  //   		nrf24_powerUpRx();
+		// }
+		// */
+		
+		// /*Motor Control:
+		//   Directions are defined at the top of the file and look like this:
+		//   	7	8	9
+		//   	4	5	6	
+		//   	1	2	3
+		//   This is based of a standard dial pad, with the analog stick centered at 5
+		//   */		
+		// 		if (dir == FORWARD) {
+		// 			in0 = 70;
+		// 			in1 = 30;
+		// 			in2 = 70;
+		// 			in3 = 30;
+		// 		} else if (dir == BACKWARD) {
+		// 			in0 = 30;
+		// 			in1 = 70;
+		// 			in2 = 30;
+		// 			in3 = 70;
+		// 		} else if (dir == FORWARD_RIGHT) {
+		// 			in0 = 70;
+		// 			in1 = 30;
+		// 			in2 = 50;
+		// 			in3 = 50;
+		// 		} else if (dir == FORWARD_LEFT) {
+		// 			in0 = 50;
+		// 			in1 = 50;
+		// 			in2 = 70;
+		// 			in3 = 30;
+		// 		} else if (dir == RIGHT) {
+		// 			in0 = 70;
+		// 			in1 = 30;
+		// 			in2 = 30;
+		// 			in3 = 70;
+		// 		} else if (dir == LEFT) {
+		// 			in0 = 30;
+		// 			in1 = 70;
+		// 			in2 = 70;
+		// 			in3 = 30;
+		// 		} else if (dir == BACKWARD_RIGHT) {
+		// 			in0 = 30;
+		// 			in1 = 70;
+		// 			in2 = 50;
+		// 			in3 = 50;
+		// 		} else if (dir == BACKWARD_LEFT) {
+		// 			in0 = 50;
+		// 			in1 = 50;
+		// 			in2 = 30;
+		// 			in3 = 70;
+		// 		} else if (dir == NO_MOVEMENT) {
+		// 			in0 = 50;
+		// 			in1 = 50;
+		// 			in2 = 50;
+		// 			in3 = 50;
+		// 		}
+		// }
+    }
 }
+
+
+
