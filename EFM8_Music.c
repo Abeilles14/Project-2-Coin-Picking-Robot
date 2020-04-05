@@ -170,6 +170,7 @@ void Menu (void)
     "   2) Coin tune\n"
     "   3) Win tune\n"
     "	4) Main Theme\n"
+    "	5) Beyonce\n"
     "Option:" );
 }
 
@@ -200,6 +201,9 @@ void main(void)
         	   break;
         	case '4':
         		ParseMDL(maintheme);
+        	   break;
+        	case '5':
+        		ParseMDL(beyonce);
         	   break;
 			default:
 			    break;

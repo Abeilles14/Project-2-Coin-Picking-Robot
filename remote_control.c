@@ -1,35 +1,22 @@
-//  square.c: Uses timer 2 interrupt to generate a square wave in pin
-//  P2.0 and a 75% duty cycle wave in pin P2.1
-//  Copyright (c) 2010-2018 Jesus Calvino-Fraga
-//  ~C51~
-
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <EFM8LB1.h>
+#include "nrf24.h"
 
-// ~C51~  
-
-#define SYSCLK 72000000L
+#define SYSCLK 48000000L    // Internal oscillator frequency in Hz
 #define BAUDRATE 115200L
+#define F_SCK_MAX 2000000L  // Max SCK freq (Hz)
 
-//motor 1(right)
-#define OUT0 P2_4	//1_4
-#define OUT1 P2_3	//1_5
-//motor 2(left)
-#define OUT2 P2_2	//1_3
-#define OUT3 P2_1	//1_1
-
-#define MODE_BUTTON P0_3
-#define FWD_BUTTON P0_5
-#define BCK_BUTTON P0_7
-#define RGT_BUTTON P1_2
-#define LFT_BUTTON P1_4
-#define STOP_BUTTON P1_7
-
-#define VDD 3.3035 // The measured value of VDD in volts
-
-volatile unsigned char pwm_count0=0;
-volatile unsigned char pwm_count1=0;
+#define FORWARD	8
+#define BACKWARD 2
+#define LEFT 4 
+#define RIGHT 6
+#define FORWARD_RIGHT 9
+#define FORWARD_LEFT 7
+#define BACKWARD_RIGHT 3
+#define BACKWARD_LEFT 1
+#define NO_MOVEMENT 5
 
 volatile unsigned int in0 = 50;
 volatile unsigned int in1 = 50;
@@ -37,6 +24,13 @@ volatile unsigned int in1 = 50;
 volatile unsigned int in2 = 50;
 volatile unsigned int in3 = 50;
 
+// Pins used by the SPI interface:
+// 	P0.0: SCK
+// 	P0.1: MISO
+// 	P0.2: MOSI
+// 	P0.3: SS*
+
+	
 char _c51_external_startup (void)
 {
 	// Disable Watchdog with key sequence
@@ -84,48 +78,30 @@ char _c51_external_startup (void)
 	#else
 		#error SYSCLK must be either 12250000L, 24500000L, 48000000L, or 72000000L
 	#endif
-	
-	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
-	XBR0     = 0x01; // Enable UART0 on P0.4(TX) and P0.5(RX)                     
-	XBR1     = 0X00;
-	XBR2     = 0x40; // Enable crossbar and weak pull-ups
 
-	// Configure Uart 0
-	#if (((SYSCLK/BAUDRATE)/(2L*12L))>0xFFL)
-		#error Timer 0 reload value is incorrect because (SYSCLK/BAUDRATE)/(2L*12L) > 0xFF
+	P0MDOUT=0b_0001_1101;//SCK, MOSI, P0.3, TX0 are puspull, all others open-drain
+	XBR0=0b_0000_0011;//SPI0E=1, URT0E=1
+	XBR1=0b_0000_0000;
+	XBR2=0b_0100_0000; // Enable crossbar and weak pull-ups
+
+	#if ( ((SYSCLK/BAUDRATE)/(12L*2L)) > 0x100)
+		#error Can not configure baudrate using timer 1 
 	#endif
+	// Configure Uart 0
 	SCON0 = 0x10;
-	TH1 = 0x100-((SYSCLK/BAUDRATE)/(2L*12L));
+	TH1 = 0x100-((SYSCLK/BAUDRATE)/(12L*2L));
 	TL1 = TH1;      // Init Timer1
 	TMOD &= ~0xf0;  // TMOD: timer 1 in 8-bit auto-reload
 	TMOD |=  0x20;                       
 	TR1 = 1; // START Timer1
 	TI = 1;  // Indicate TX0 ready
 
-	// Initialize timer 2 for periodic interrupts
-	TMR2CN0=0x00;   // Stop Timer2; Clear TF2;
-	CKCON0|=0b_0001_0000; // Timer 2 uses the system clock
-	TMR2RL=(0x10000L-(SYSCLK/10000L)); // Initialize reload value
-	TMR2=0xffff;   // Set to reload immediately
-	ET2=1;         // Enable Timer2 interrupts
-	TR2=1;         // Start Timer2 (TMR2CN is bit addressable)
-
-	EA=1; // Enable interrupts
-
-  	
+	// SPI inititialization
+	SPI0CKR = (SYSCLK/(2*F_SCK_MAX))-1;
+	SPI0CFG = 0b_0100_0000; //SPI in master mode
+	SPI0CN0 = 0b_0000_0001; //SPI enabled and in three wire mode
+	
 	return 0;
-}
-
-void InitADC (void)
-{
-	SFRPAGE = 0x00;
-	ADC0CN1 = 0b_10_000_000; //14-bit,  Right justified no shifting applied, perform and Accumulate 1 conversion.
-	ADC0CF0 = 0b_11111_0_00; // SYSCLK/32
-	ADC0CF1 = 0b_0_0_011110; // Same as default for now
-	ADC0CN0 = 0b_0_0_0_0_0_00_0; // Same as default for now
-	ADC0CF2 = 0b_0_01_11111 ; // GND pin, Vref=VDD
-	ADC0CN2 = 0b_0_000_0000;  // Same as default for now. ADC0 conversion initiated on write of 1 to ADBUSY.
-	ADEN=1; // Enable ADC
 }
 
 // Uses Timer3 to delay <us> micro-seconds. 
@@ -151,151 +127,221 @@ void Timer3us(unsigned char us)
 void waitms (unsigned int ms)
 {
 	unsigned int j;
-	for(j=ms; j!=0; j--)
-	{
-		Timer3us(249);
-		Timer3us(249);
-		Timer3us(249);
-		Timer3us(250);
-	}
+	unsigned char k;
+	for(j=0; j<ms; j++)
+		for (k=0; k<4; k++) Timer3us(250);
 }
 
-void Timer2_ISR (void) interrupt 5
+uint8_t spi_transfer(uint8_t tx)
 {
-	TF2H = 0; // Clear Timer2 interrupt flag
-	
-	pwm_count0++;
-	if(pwm_count0>100) pwm_count0=0;
-	
-	OUT0=pwm_count0>in0?0:1;
-	OUT1=pwm_count0>in1?0:1;
-
-	pwm_count1++;
-	if(pwm_count1>100) pwm_count1=0;
-	
-	OUT2=pwm_count1>in2?0:1;
-	OUT3=pwm_count1>in3?0:1;
-
+   SPI0DAT=tx;
+   while(!SPIF);
+   SPIF=0;
+   return SPI0DAT;
 }
 
-void InitPinADC (unsigned char portno, unsigned char pinno)
- {
-	unsigned char mask;
-	
-	mask=1<<pinno;
-
- 	SFRPAGE = 0x20;
- 	switch (portno)
- 	{
- 		case 0:
- 			P0MDIN &= (~mask); // Set pin as analog input
- 			P0SKIP |= mask; // Skip Crossbar decoding for this pin
- 			break;
- 			case 1:
- 			P1MDIN &= (~mask); // Set pin as analog input
- 			P1SKIP |= mask; // Skip Crossbar decoding for this pin
- 			break;
- 			case 2:
- 			P2MDIN &= (~mask); // Set pin as analog input
- 			P2SKIP |= mask; // Skip Crossbar decoding for this pin
- 			break;
- 			default:
- 			break;
- 		}
- 		SFRPAGE = 0x00;
- 	}
-
- unsigned int ADC_at_Pin(unsigned char pin)
- 	{
- 	ADC0MX = pin;   // Select input from pin
- 	ADBUSY=1;       // Dummy conversion first to select new pin
- 	while (ADBUSY); // Wait for dummy conversion to finish
- 	ADBUSY = 1;     // Convert voltage at the pin
- 	while (ADBUSY); // Wait for conversion to complete
- 	return (ADC0);
- }
-
- float Volts_at_Pin(unsigned char pin)
- {
- 	return ((ADC_at_Pin(pin)*VDD)/0b_0011_1111_1111_1111);
- }
-
-
-void main (void)
+void safe_gets(char *s, int n, int to)
 {
-	int inrange = 1;
-
-	InitPinADC(1, 0); // Configure P2.5 as analog input
-	InitADC();
-
-	waitms(500); // Give PuTTY a chance to start.
-
-	printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-
-	printf("\rEnter 4 spaced numbers (2 for right/left motors) between 0-100: ");
-	scanf("%d %d %d %d\n", &in0,&in1,&in2,&in3);
-
+	int to_cnt=0;
+	unsigned char j=0;
+	unsigned char c, us_cnt=0;
+	
 	while(1)
 	{
+		if(RI)
+		{
+			to_cnt=0;
+			us_cnt=0;
+			c=getchar();
+			if ( (c=='\n') || (c=='\r') ) break;
+			if(j<(n-1))
+			{
+				s[j]=c;
+				j++;
+			}
+		}
+		else
+		{
+			Timer3us(20);
+			us_cnt++;
+			if(us_cnt==50)
+			{
+				to_cnt++;
+				us_cnt=0;
+			}
+		}
+		if(to_cnt==to) break;
+	}
+	s[j]=0;
+}
 
-			//check if putty input is in range
-			// if (in0<0 || in0>100 || in1<0 || in1>100 || in2<0 || in2>100 || in3<0 || in3>100) {
-			// 	in0 = 50;
-			// 	in1 = 50;
-			// 	in2 = 50;
-			// 	in3 = 50;
-			// 	inrange = 0;
-			// 	break;
-			// }
+int ctlIn,dir,Abutton,Bbutton,Xbutton,Ybutton;
+uint8_t temp;
+xdata uint8_t data_array[32];
+const uint8_t tx_address[] = "TXADD";
+const uint8_t rx_address[] = "RXADD";
+ 
+void main (void)
+{
+	
+	waitms(500);
+	printf("\x1b[2J\x1b[1;1H"); // Clear screen using ANSI escape sequence.
+	
+/*	Probably don't need this 
+	printf ("EFM8LB1 SPI/nRF24L01 transceiver test program.\n"
+	        "File: %s\n"
+	        "Compiled: %s, %s\n\n",
+	        __FILE__, __DATE__, __TIME__);
+*/
+	
+    nrf24_init(); // init hardware pins
+    nrf24_config(120,32); // Configure channel and payload size
+ 
+    /* Set the device as reciever */
 
-			/******* PUSH BUTTON CONTROLS *********/
-			if (STOP_BUTTON == 0) {						// basic commands: go fwd, bck, rgt, lft
-				break;
-				} else if (FWD_BUTTON == 0) {		//straight forward
+    	printf("Set as receiver\r\n");
+	    nrf24_tx_address(rx_address);
+	    nrf24_rx_address(tx_address);
+    
+
+    while(1)
+    {    
+        if(nrf24_dataReady())
+        {
+            nrf24_getData(data_array); 
+            ctlIn =atoi(data_array);	//converts string recieved from radio into an integer
+     
+           
+            /*ctlIn is formated as follows: 
+              the 5 bit positions carry the values for the push buttons and the analog stick direction
+              Starting from the leftmost bit:
+              A button  (0 or 1)
+              B button  (0 or 1)
+              X button  (0 or 1)
+              Y button  (0 or 1)
+              direction (1-9) */
+            						
+            if(ctlIn>=10000){
+            	Abutton=1;
+            	ctlIn=ctlIn%10000;	//removes the leftmost bit if set
+            } else
+            	Abutton=0;
+            
+            if(ctlIn>=1000){
+            	Bbutton=1;
+            	ctlIn=ctlIn%1000;	//removes the leftmost bit if set
+            } else
+            	Bbutton=0;
+            	
+            if(ctlIn>=100){
+            	Xbutton=1;
+            	ctlIn=ctlIn%100;	//removes the leftmost bit if set
+            } else 
+            	Xbutton=0;
+            if(ctlIn>=10){
+            	Ybutton=1;
+            	ctlIn=ctlIn%10;		//removes the leftmost bit if set
+            } else
+            	Ybutton=0;
+            
+            dir=ctlIn;
+             printf("IN: %i%i%i%i%i\r\n", Abutton,Bbutton,Xbutton,Ybutton,dir); //Prints data that is recieved, may want to remove
+            	
+            	            	
+            /* FOR DEBUGGING ONLY
+            if(inputs==0)
+            	printf("A button pressed");
+            printf("ctlIn:%i",ctlIn);
+            printf("button=%i,dir=%i",button,dir);	
+            */         	
+        }
+        
+        if(RI) //Other radio junk, stuff to do with handling lost messages and such
+        {
+        	//safe_gets(data_array, sizeof(data_array), 2000);
+        	gets(data_array);
+		    printf("\r\n");    
+	        nrf24_send(data_array);        
+		    while(nrf24_isSending());
+		    temp = nrf24_lastMessageStatus();
+			if(temp == NRF24_MESSAGE_LOST)
+		    {                    
+		        printf("> Message lost\r\n"); //for debugging, may want to remove
+		        dir = NO_MOVEMENT; //makes robot not move if message is lost
+		        Abutton=0;    
+		    }
+			nrf24_powerDown();
+    		nrf24_powerUpRx();
+		}
+		/* Transmitter code, not needed while being used as reciever
+		if(P3_7==0)
+		{
+			while(P3_7==0);
+			strcpy(data_array, "Button test");
+	        nrf24_send(data_array);
+		    while(nrf24_isSending());
+		    temp = nrf24_lastMessageStatus();
+			if(temp == NRF24_MESSAGE_LOST)
+		    {                    
+		        printf("> Message lost\r\n");    
+		    }
+			nrf24_powerDown();
+    		nrf24_powerUpRx();
+		}
+		*/
+		
+		/*Motor Control:
+		  Directions are defined at the top of the file and look like this:
+		  	7	8	9
+		  	4	5	6	
+		  	1	2	3
+		  This is based of a standard dial pad, with the analog stick centered at 5
+		  */		
+				if (dir == FORWARD) {
 					in0 = 70;
 					in1 = 30;
 					in2 = 70;
 					in3 = 30;
-				} else if (BCK_BUTTON == 0) {		//straight back
+				} else if (dir == BACKWARD) {
 					in0 = 30;
 					in1 = 70;
 					in2 = 30;
 					in3 = 70;
-				} else if (RGT_BUTTON == 0) { 		//turn right on spot
+				} else if (dir == FORWARD_RIGHT) {
+					in0 = 70;
+					in1 = 30;
+					in2 = 50;
+					in3 = 50;
+				} else if (dir == FORWARD_LEFT) {
+					in0 = 50;
+					in1 = 50;
+					in2 = 70;
+					in3 = 30;
+				} else if (dir == RIGHT) {
 					in0 = 70;
 					in1 = 30;
 					in2 = 30;
 					in3 = 70;
-				} else if (LFT_BUTTON == 0) {		//left on spot
-					in0 = 70;
-					in1 = 30;
+				} else if (dir == LEFT) {
+					in0 = 30;
+					in1 = 70;
 					in2 = 70;
 					in3 = 30;
+				} else if (dir == BACKWARD_RIGHT) {
+					in0 = 30;
+					in1 = 70;
+					in2 = 50;
+					in3 = 50;
+				} else if (dir == BACKWARD_LEFT) {
+					in0 = 50;
+					in1 = 50;
+					in2 = 30;
+					in3 = 70;
+				} else if (dir == NO_MOVEMENT) {
+					in0 = 50;
+					in1 = 50;
+					in2 = 50;
+					in3 = 50;
 				}
-
-
-			/****** DISPLAY *******/			// ******* this may be wrong
-				// printf("\x1b[2J"); // Clear screen using ANSI escape sequence.
-				// printf("Direction:");
-					
-
-				// if (in0>in1 && in2==in0 && in3==in1){	//backward (try 70 30 70 30)
-				// 		printf("Forward");
-				// } else if (in0<in1 && in2==in0 && in3==in1) {	//forward (try 30 70 30 70)
-				// 		printf("Backward");
-				// } else if (in0<in1 && in3<in1) {	//forward left (try 30 70 40 60)
-				// 		printf("Forward Right");
-				// } else if (in2<in3 && in1<in3) {	//forward right (try 30 70 40 60)
-				// 		printf("Forward Left");
-				// } else if (in0==in1 && in2==in3) {	//stop (try 30 70 30 70)
-				// 		printf("Stop");
-				// } else if (in0==in1 && in2>in3) {	//back left (try 50 50 70 30)
-				// 		printf("Back Right");
-				// } else if (in0==in1 && in2<in3) {	//back right (try 70 30 50 50)
-				// 		printf("Back Left");
-				// } else {
-				// 		printf("Turning");
-				// }
-	
-	}
+    }
 }
