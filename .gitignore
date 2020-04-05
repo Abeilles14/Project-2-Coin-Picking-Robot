@@ -1,0 +1,22 @@
+# Specifies intentionally untracked files to ignore when using Git
+# http://git-scm.com/docs/gitignore
+
+*~
+*.sw[mnpcod]
+*.log
+*.tmp
+*.tmp.*
+
+*.hex
+*.lst
+*.bat
+*.asm
+*.lkr
+*.map
+*.obj
+
+coin_picking_arm_test.c
+
+.DS_Store
+Thumbs.db
+UserInterfaceState.xcuserstate
