@@ -702,9 +702,15 @@ void main (void)
 	char c;
 
 	//SOUND
-	// sound_flag = 1;
-	// ParseMDL(starttune);		//mario start song
-	 sound_flag = 0;
+	sound_flag = 1;
+	ParseMDL(starttune);		//mario start song
+	sound_flag = 0;
+	TR2=1;
+
+	in0 = 50;
+	in1 = 50;
+	in2 = 50;
+	in3 = 50;
 	
 	//TIMER
 	TIMER0_Init();
@@ -788,6 +794,14 @@ void main (void)
 			//sound_flag = 1;
 		 	//ParseMDL(cointune);
 		 	//sound_flag = 0;
+
+		 	//TR2=1;
+			//in0 = 50;
+			// in1 = 50;
+			// in2 = 50;
+			// in3 = 50;
+
+			
 			coin_count++;
 		} else {
 			in0 = 80;
