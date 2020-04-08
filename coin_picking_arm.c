@@ -49,11 +49,10 @@
 void ParseMDL(char * music);
 
 #define BUFFSIZE 15
-char buff[BUFFSIZE+1];
-const char what[]="What?\n";
+xdata char buff[BUFFSIZE+1];
 
-unsigned char style, octave, note, tempo;
-int actLen, defLen, cur;
+xdata unsigned char style, octave, note, tempo;
+xdata int actLen, defLen, cur;
 extern volatile int timer_count;
 
 // timer 0 used for systemclock
@@ -71,7 +70,7 @@ extern const float FTone[];
 #define OUT2 P2_2		//motor 2
 #define OUT3 P2_1
 
-#define PWMOUT0 P2_0 		//bottom motor
+#define PWMOUT0 P2_0 		//bottom motor  //P2_0
 #define PWMOUT1 P1_7		//top motor
 
 #define PWMMAG P3_0			//electromagnet
@@ -89,19 +88,15 @@ volatile unsigned int in3 = 50;
 
 volatile unsigned int pwm_reload0;
 volatile unsigned int pwm_reload1;
+
 volatile unsigned char pwm_state0 = 0;
 volatile unsigned char pwm_state1 = 0;
+
 volatile unsigned char count20ms;
-volatile unsigned int arm_flag = 0;
-volatile unsigned int sound_flag = 0;
+xdata volatile unsigned int arm_flag = 0;
+xdata volatile unsigned int sound_flag = 0;
 
 unsigned char overflow_count;
-
-// int ctlIn,dir,Abutton,Bbutton,Xbutton,Ybutton;
-// uint8_t temp;
-// xdata uint8_t data_array[32];
-// const uint8_t tx_address[] = "TXADD";
-// const uint8_t rx_address[] = "RXADD";
 
 char _c51_external_startup (void)
 {
@@ -162,7 +157,7 @@ char _c51_external_startup (void)
 	
 	// Configure the pins used for square output
 	P1MDOUT|=0b_1000_0000;
-	P2MDOUT|=0b_0100_0011;
+	P2MDOUT|=0b_0110_0011;
 	P0MDOUT |= 0x10; // Enable UART0 TX as push-pull output
 	XBR0     = 0x01; // Enable UART0 on P0.4(TX) and P0.5(RX)                     
 	XBR1     = 0X10; // Enable T0 on P0.0
@@ -226,25 +221,6 @@ void InitADC (void)
 	ADEN=1; // Enable ADC
 }
 
-// Uses Timer3 to delay <us> micro-seconds. 
-// void Timer3us(unsigned char us)
-// {
-// 	unsigned char i;               // usec counter
-	
-// 	// The input for Timer 3 is selected as SYSCLK by setting T3ML (bit 6) of CKCON0:
-// 	CKCON0|=0b_0100_0000;
-	
-// 	TMR3RL = (-(SYSCLK)/1000000L); // Set Timer3 to overflow in 1us.
-// 	TMR3 = TMR3RL;                 // Initialize Timer3 for first overflow
-	
-// 	TMR3CN0 = 0x04;                 // Sart Timer3 and clear overflow flag
-// 	for (i = 0; i < us; i++)       // Count <us> overflows
-// 	{
-// 		while (!(TMR3CN0 & 0x80));  // Wait for overflow
-// 		TMR3CN0 &= ~(0x80);         // Clear overflow indicator
-// 	}
-// 	TMR3CN0 = 0 ;                   // Stop Timer3 and clear overflow flag
-// }
 void Timer3us(unsigned char us)
 {
 	unsigned char i;               // usec counter
@@ -280,50 +256,6 @@ void waitms (unsigned int ms)
 		Timer3us(250);
 	}
 }
-
-
-// uint8_t spi_transfer(uint8_t tx)
-// {
-//    SPI0DAT=tx;
-//    while(!SPIF);
-//    SPIF=0;
-//    return SPI0DAT;
-// }
-
-// void safe_gets(char *s, int n, int to)
-// {
-// 	int to_cnt=0;
-// 	unsigned char j=0;
-// 	unsigned char c, us_cnt=0;
-	
-// 	while(1)
-// 	{
-// 		if(RI)
-// 		{
-// 			to_cnt=0;
-// 			us_cnt=0;
-// 			c=getchar();
-// 			if ( (c=='\n') || (c=='\r') ) break;
-// 			if(j<(n-1))
-// 			{
-// 				s[j]=c;
-// 				j++;
-// 			}
-// 		}
-// 		else
-// 		{
-// 			Timer3us(20);
-// 			us_cnt++;
-// 			if(us_cnt==50)
-// 			{
-// 				to_cnt++;
-// 				us_cnt=0;
-// 			}
-// 		}
-// 		if(to_cnt==to) break;
-// 	}
-// 	s[j]=0;
-// }
 
 void TIMER0_Init(void)
 {
@@ -691,15 +623,38 @@ void arm_reset(void) {		//resets and centers arm
 	waitms(500);
 }
 
+ uint8_t spi_transfer(uint8_t tx)
+ {
+ 
+    SPI0DAT=tx;
+    while(!SPIF);
+    SPIF=0;
+	return SPI0DAT;
+ }
+
 /*********** MAIN CODE ***********/
 void main (void)
 {
+	int dir=5;
+	int ctlIn;
+	int Abutton=0;
+	int Bbutton=0;
+	int Xbutton=0;
+	int Ybutton=0;
+ 	uint8_t temp;
+ 	xdata uint8_t data_array[32];
+ 	const uint8_t tx_address[] = "TXADD";
+ 	const uint8_t rx_address[] = "RXADD";
+
 	unsigned long frequency;
 	unsigned long freq_init;
 	float volt_init[2];
 	float v[2];
 	int coin_count = 0;
 	char c;
+	int mode_flag=0;
+
+	int Abutton_flag=0;
 
 	//SOUND
 	sound_flag = 1;
@@ -719,12 +674,6 @@ void main (void)
 	InitPinADC(1, 1);
 	InitPinADC(1, 2);
     InitADC();
-
-    //RECIEVER
- //    nrf24_init(); 					// init hardware pins
- //    nrf24_config(120,32); 			// Configure channel and payload size
- //    nrf24_tx_address(rx_address);	//set device as reciever
-	// nrf24_rx_address(tx_address);
 
     count20ms=0; 		// Count20ms is an atomic variable, so no problem sharing with timer 5 ISR
     waitms(500);		//wait for putty to start
@@ -780,7 +729,7 @@ void main (void)
 		printf("\rCoins: %d", coin_count);
 
 		//CHECK METAL DETECTOR
-		if (frequency >= freq_init + 20) {
+		if (frequency >= freq_init + 50) {		//30
 			in0 = 20;
 			in1 = 80;
 			in2 = 20;
@@ -829,11 +778,43 @@ void main (void)
 		}
 
 		/********** SWITCH TO REMOTE CONTROL ************/
-		// while(coin_count == 3){					//once 3 coins are picked up
-		// 	if(nrf24_dataReady())
-  //       {
-  //           nrf24_getData(data_array); 
-  //           ctlIn =atoi(data_array);	//converts string recieved from radio into an integer
+		 while(coin_count >= 3){
+		
+		 	if(mode_flag==0){
+		 		
+		 		ADEN=0;
+		 		XBR2=0;
+		 		
+		 	/*SPI Setup, overwrites frequency detector stuff*/
+				//P0MDOUT=0b_0001_1101;//SCK, MOSI, P0.3, TX0 are puspull, all others open-drain
+				P0SKIP=0b_0000_0001;
+				P0MDOUT=0b_0101_1010;
+				//P0MDIN=0;
+				//P1MDOUT=0;
+				//P2MDOUT=0;
+				XBR0=0b_0000_0011;//SPI0E=1, URT0E=1
+				XBR1=0b_0000_0000;
+				XBR2=0b_0100_0000; // Enable crossbar and weak pull-ups
+		 		
+		 			// SPI inititialization
+	 			SPI0CKR = (SYSCLK/(2*F_SCK_MAX))-1;
+				SPI0CFG = 0b_0100_0000; //SPI in master mode
+				SPI0CN0 = 0b_0000_0001; //SPI enabled and in three wire mode
+		 		
+		 		
+   				//RECIEVER
+    			nrf24_init(); 					// init hardware pins (if there are problems comment out line modifying P0MDOUT in this function)
+   				nrf24_config(120,32); 			// Configure channel and payload size
+    			nrf24_tx_address(rx_address);	//set device as reciever
+				nrf24_rx_address(tx_address);
+				printf("manual mode");
+		 		mode_flag=1;
+		 	}
+		 					//once 3 coins are picked up
+		 	if(nrf24_dataReady())
+         {
+             nrf24_getData(data_array); 
+             ctlIn =atoi(data_array);	//converts string recieved from radio into an integer
      
            
   //           /*ctlIn is formated as follows: 
@@ -845,75 +826,59 @@ void main (void)
   //             Y button  (0 or 1)
   //             direction (1-9) */
             						
-  //           if(ctlIn>=10000){
-  //           	Abutton=1;
-  //           	ctlIn=ctlIn%10000;	//removes the leftmost bit if set
-  //           } else
-  //           	Abutton=0;
+             if(ctlIn>=10000){
+             	Abutton=1;
+             	ctlIn=ctlIn%10000;	//removes the leftmost bit if set
+             } else
+             	Abutton=0;
             
-  //           if(ctlIn>=1000){
-  //           	Bbutton=1;
-  //           	ctlIn=ctlIn%1000;	//removes the leftmost bit if set
-  //           } else
-  //           	Bbutton=0;
+             if(ctlIn>=1000){
+             	Bbutton=1;
+             	ctlIn=ctlIn%1000;	//removes the leftmost bit if set
+             } else
+             	Bbutton=0;
             	
-  //           if(ctlIn>=100){
-  //           	Xbutton=1;
-  //           	ctlIn=ctlIn%100;	//removes the leftmost bit if set
-  //           } else 
-  //           	Xbutton=0;
-  //           if(ctlIn>=10){
-  //           	Ybutton=1;
-  //           	ctlIn=ctlIn%10;		//removes the leftmost bit if set
-  //           } else
-  //           	Ybutton=0;
+             if(ctlIn>=100){
+             	Xbutton=1;
+             	ctlIn=ctlIn%100;	//removes the leftmost bit if set
+             } else 
+             	Xbutton=0;
+             if(ctlIn>=10){
+             	Ybutton=1;
+             	ctlIn=ctlIn%10;		//removes the leftmost bit if set
+             } else
+             	Ybutton=0;
             
-  //           dir=ctlIn;
-  //            printf("IN: %i%i%i%i%i\r\n", Abutton,Bbutton,Xbutton,Ybutton,dir); //Prints data that is recieved, may want to remove
-            	
+            dir=ctlIn;
+            printf("IN: %s\r\n", data_array); //Prints data that is recieved, may want to remove
+            //printf("IN: %i%i%i%i%i",Abutton,Bbutton,Xbutton,Ybutton,dir);
             	            	
   //           /* FOR DEBUGGING ONLY
   //           if(inputs==0)
   //           	printf("A button pressed");
   //           printf("ctlIn:%i",ctlIn);
   //           printf("button=%i,dir=%i",button,dir);	
-  //           */         	
-  //       }
+                      	
+         }
         
-  //       if(RI) //Other radio junk, stuff to do with handling lost messages and such
-  //       {
-  //       	//safe_gets(data_array, sizeof(data_array), 2000);
-  //       	gets(data_array);
-		//     printf("\r\n");    
-	 //        nrf24_send(data_array);        
-		//     while(nrf24_isSending());
-		//     temp = nrf24_lastMessageStatus();
-		// 	if(temp == NRF24_MESSAGE_LOST)
-		//     {                    
-		//         printf("> Message lost\r\n"); //for debugging, may want to remove
-		//         dir = NO_MOVEMENT; //makes robot not move if message is lost
-		//         Abutton=0;    
-		//     }
-		// 	nrf24_powerDown();
-  //   		nrf24_powerUpRx();
-		// }
+         if(RI) //Other radio junk, stuff to do with handling lost messages and such
+         {
+         	//safe_gets(data_array, sizeof(data_array), 2000);
+         	gets(data_array);
+		    //printf("\r\n");    
+	         nrf24_send(data_array);        
+		     while(nrf24_isSending());
+		     temp = nrf24_lastMessageStatus();
+		 	if(temp == NRF24_MESSAGE_LOST)
+		     {                    
+		         //printf("> Message lost\r\n"); //for debugging, may want to remove
+		         dir = NO_MOVEMENT; //makes robot not move if message is lost
+		         Abutton=0;    
+		     }
+		 	nrf24_powerDown();
+     		nrf24_powerUpRx();
+		 }
 
-		// /* Transmitter code, not needed while being used as reciever
-		// if(P3_7==0)
-		// {
-		// 	while(P3_7==0);
-		// 	strcpy(data_array, "Button test");
-	 //        nrf24_send(data_array);
-		//     while(nrf24_isSending());
-		//     temp = nrf24_lastMessageStatus();
-		// 	if(temp == NRF24_MESSAGE_LOST)
-		//     {                    
-		//         printf("> Message lost\r\n");    
-		//     }
-		// 	nrf24_powerDown();
-  //   		nrf24_powerUpRx();
-		// }
-		// */
 		
 		// /*Motor Control:
 		//   Directions are defined at the top of the file and look like this:
@@ -921,54 +886,68 @@ void main (void)
 		//   	4	5	6	
 		//   	1	2	3
 		//   This is based of a standard dial pad, with the analog stick centered at 5
-		//   */		
-		// 		if (dir == FORWARD) {
-		// 			in0 = 70;
-		// 			in1 = 30;
-		// 			in2 = 70;
-		// 			in3 = 30;
-		// 		} else if (dir == BACKWARD) {
-		// 			in0 = 30;
-		// 			in1 = 70;
-		// 			in2 = 30;
-		// 			in3 = 70;
-		// 		} else if (dir == FORWARD_RIGHT) {
-		// 			in0 = 70;
-		// 			in1 = 30;
-		// 			in2 = 50;
-		// 			in3 = 50;
-		// 		} else if (dir == FORWARD_LEFT) {
-		// 			in0 = 50;
-		// 			in1 = 50;
-		// 			in2 = 70;
-		// 			in3 = 30;
-		// 		} else if (dir == RIGHT) {
-		// 			in0 = 70;
-		// 			in1 = 30;
-		// 			in2 = 30;
-		// 			in3 = 70;
-		// 		} else if (dir == LEFT) {
-		// 			in0 = 30;
-		// 			in1 = 70;
-		// 			in2 = 70;
-		// 			in3 = 30;
-		// 		} else if (dir == BACKWARD_RIGHT) {
-		// 			in0 = 30;
-		// 			in1 = 70;
-		// 			in2 = 50;
-		// 			in3 = 50;
-		// 		} else if (dir == BACKWARD_LEFT) {
-		// 			in0 = 50;
-		// 			in1 = 50;
-		// 			in2 = 30;
-		// 			in3 = 70;
-		// 		} else if (dir == NO_MOVEMENT) {
-		// 			in0 = 50;
-		// 			in1 = 50;
-		// 			in2 = 50;
-		// 			in3 = 50;
-		// 		}
-		// }
+					
+		 		if (dir == FORWARD) {
+		 			in0 = 70;
+		 			in1 = 30;
+		 			in2 = 70;
+		 			in3 = 30;
+		 		} else if (dir == BACKWARD) {
+		 			in0 = 30;
+		 			in1 = 70;
+		 			in2 = 30;
+		 			in3 = 70;
+		 		} else if (dir == FORWARD_RIGHT) {
+		 			in0 = 70;
+		 			in1 = 30;
+		 			in2 = 50;
+		 			in3 = 50;
+		 		} else if (dir == FORWARD_LEFT) {
+		 			in0 = 50;
+		 			in1 = 50;
+					in2 = 70;
+		 			in3 = 30;
+		 		} else if (dir == RIGHT) {
+		 			in0 = 70;
+		 			in1 = 30;
+		 			in2 = 30;
+		 			in3 = 70;
+		 		} else if (dir == LEFT) {
+		 			in0 = 30;
+		 			in1 = 70;
+		 			in2 = 70;
+		 			in3 = 30;
+		 		} else if (dir == BACKWARD_RIGHT) {
+		 			in0 = 30;
+		 			in1 = 70;
+		 			in2 = 50;
+		 			in3 = 50;
+		 		} else if (dir == BACKWARD_LEFT) {
+		 			in0 = 50;
+		 			in1 = 50;
+		 			in2 = 30;
+		 			in3 = 70;
+		 		} else if (dir == NO_MOVEMENT) {
+		 			in0 = 50;
+		 			in1 = 50;
+		 			in2 = 50;
+		 			in3 = 50;
+		 		}
+		 		
+		 		
+		 		if(Abutton){
+		 			Abutton_flag=1;
+		 		}
+		 		else{
+		 			if(Abutton_flag){
+		 				arm_pick_up();
+		 				printf("pickup");
+		 				Abutton_flag=0;
+		 				waitms(5000);
+		 			}
+		 		}
+
+		 }
     }
 }
 
