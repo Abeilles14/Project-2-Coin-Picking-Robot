@@ -117,9 +117,6 @@ ELEC 291 Project 2 Team B8 Online Demo
 
 https://youtu.be/4grgkY-fsU0
 
-*Team B8 was the only team to undertake the challenge of completing the entire project, with
-minimal social interaction.*
-
 ### Extra: Project Casualties
 - 4 Burnt mosfets
 - 3 Internally broken wires
