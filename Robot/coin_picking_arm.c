@@ -595,18 +595,17 @@ void arm_pick_up(void) {			//picks up coins
 	PWMMAG = 1;						//electromagnet on
 	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*2.4*1.0e-3)/12.0;		//sweep left
+	pwm_reload0=0x10000L-(SYSCLK*2.0*1.0e-3)/12.0;		//sweep left
 	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*0.6*1.0e-3)/12.0;		//pick up
 	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*0.8*1.0e-3)/12.0;		//carry right
+	pwm_reload0=0x10000L-(SYSCLK*0.9*1.0e-3)/12.0;		//carry right
 	waitms(500);
 	arm_flag = 1;
 	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//drop
 	PWMMAG = 0;										//Electromagnet off
-	//ParseMDL(cointune);
 	waitms(500);
 	arm_flag = 0;
 	pwm_reload0=0x10000L-(SYSCLK*1.2*1.1e-3)/12.0;		//centered
@@ -616,10 +615,10 @@ void arm_pick_up(void) {			//picks up coins
 void arm_reset(void) {		//resets and centers arm
 	PWMMAG = 0;											//Electromagnet off
 	arm_flag = 1;
-	pwm_reload1=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//up
+	pwm_reload1=0x10000L-(SYSCLK*1.0*1.0e-3)/12.0;		//up
 	waitms(500);
 	arm_flag = 0;
-	pwm_reload0=0x10000L-(SYSCLK*1.2*1.0e-3)/12.0;		//centered
+	pwm_reload0=0x10000L-(SYSCLK*1.3*1.0e-3)/12.0;		//centered
 	waitms(500);
 }
 
@@ -654,7 +653,8 @@ void main (void)
 	char c;
 	int mode_flag=0;
 
-	int Abutton_flag=0;
+	xdata int Abutton_flag=0;
+	xdata int Bbutton_flag=0;
 
 	//SOUND
 	sound_flag = 1;
@@ -729,28 +729,29 @@ void main (void)
 		printf("\rCoins: %d", coin_count);
 
 		//CHECK METAL DETECTOR
-		if (frequency >= freq_init + 50) {		//30
+		if (frequency >= freq_init + 30) {		//30
 			in0 = 20;
 			in1 = 80;
 			in2 = 20;
 			in3 = 80;
-			waitms(500);
+			waitms(420);
 			in0 = 50;
 			in1 = 50;
 			in2 = 50;
 			in3 = 50;
-			arm_pick_up();
-			//sound_flag = 1;
-		 	//ParseMDL(cointune);
-		 	//sound_flag = 0;
 
-		 	//TR2=1;
-			//in0 = 50;
+			// sound_flag = 1;
+		 // 	ParseMDL(cointune);
+		 // 	sound_flag = 0;
+		 // 	TR2=1;
+
+		 // 	in0 = 50;
 			// in1 = 50;
 			// in2 = 50;
 			// in3 = 50;
 
-			
+			arm_pick_up();
+
 			coin_count++;
 		} else {
 			in0 = 80;
@@ -778,7 +779,7 @@ void main (void)
 		}
 
 		/********** SWITCH TO REMOTE CONTROL ************/
-		 while(coin_count >= 3){
+		 while(coin_count >= 20){
 		
 		 	if(mode_flag==0){
 		 		
@@ -888,15 +889,15 @@ void main (void)
 		//   This is based of a standard dial pad, with the analog stick centered at 5
 					
 		 		if (dir == FORWARD) {
-		 			in0 = 70;
-		 			in1 = 30;
-		 			in2 = 70;
-		 			in3 = 30;
+		 			in0 = 80;
+		 			in1 = 20;
+		 			in2 = 80;
+		 			in3 = 20;
 		 		} else if (dir == BACKWARD) {
-		 			in0 = 30;
-		 			in1 = 70;
-		 			in2 = 30;
-		 			in3 = 70;
+		 			in0 = 20;
+		 			in1 = 80;
+		 			in2 = 20;
+		 			in3 = 80;
 		 		} else if (dir == FORWARD_RIGHT) {
 		 			in0 = 70;
 		 			in1 = 30;
@@ -943,9 +944,24 @@ void main (void)
 		 				arm_pick_up();
 		 				printf("pickup");
 		 				Abutton_flag=0;
-		 				waitms(5000);
 		 			}
 		 		}
+
+
+		 		if(Bbutton){
+		 			Bbutton_flag=1;
+		 		}
+		 		else{
+		 			if(Bbutton_flag){
+		 				sound_flag = 1;
+						ParseMDL(starttune);		//mario start song
+						sound_flag = 0;
+						TR2=1;
+		 				Bbutton_flag=0;
+		 			}
+		 		}
+
+
 
 		 }
     }

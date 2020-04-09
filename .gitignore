@@ -14,8 +14,9 @@
 *.lkr
 *.map
 *.obj
-
-coin_picking_arm_test.c
+*.elf
+*.o
+*.Id
 
 .DS_Store
 Thumbs.db
