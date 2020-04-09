@@ -118,4 +118,4 @@ minimal social interaction.*
 - 1 Broken breadboard
 - 2 Servo motors
 - 3 Dead 9V batteries
-	8 Dead AA batteries
+- 8 Dead AA batteries
