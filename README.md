@@ -24,6 +24,7 @@ Canadian coins in circulation (0.05$, 0.1$, 0.25$, 1.00$, and 2.00$) when scatte
 arrangement before the coin picking process begins.
 
 <img src="Robot/0_completed_robot.jpg" width="700"/>
+
 *Completed Coin Picking Robot*
 
 ## Technical Components
@@ -39,10 +40,6 @@ being exchanged for a 9V battery to power the servo arm movements.
 ### Metal Detector
 
 Coins were detected using a metal detector assembled from a 1mH inductor from a Colpitts oscillator.
-
-<img src="images/metal_detect.PNG" width="300"/>
-*Metal Detector Circuit*
-
 The inductor is driven by a constant current to create a magnetic field, inducing an emf voltage
 causing detectable increases in frequency of the current through the inductor as the robot moves
 over a coin. Once the coin is detected, the robot stops and sends a signal to the servos controlling
@@ -61,6 +58,7 @@ an AC source delivered by a 9V battery powered LM555 acting as an oscillator to 
 wave passing through the perimeter wire and inducing detectable flux changes near the wire.
 
 <img src="images/peak_detect_output.PNG" width="500"/>
+
 *Function Generated (CH1) and Peak Detector Output (CH2)*
 
 ### Peak Detector
@@ -72,6 +70,7 @@ inductor were attached to the bottom of the robot that leads into a simple peak 
 circuit.
 
 <img src="images/peak_detect_circuit.png" width="500"/>
+
 *Peak Detection Circuit*
 
 As the tank's resonnant frequency was calculated to be 16 kHz, the function generator
