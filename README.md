@@ -1,15 +1,15 @@
-University of British Columbia
+University of British Columbia  
 ELEC 291
 
-Team B8
-*1st Place Winners of the UBC ELEC 291 Coin Picking Robot Competition 2020*
+Team B8  
+- Bryan Nsoh
+- Will Chaba
+- Isabelle Andre
+- Debby Lin
+- Eric Wu
+- Daniel Nadeem
 
-Bryan Nsoh
-Will Chaba
-Isabelle Andre
-Debby Lin
-Eric Wu
-Daniel Nadeem
+*1st Place Winners of the UBC ELEC 291 Coin Picking Robot Competition 2020*
 
 # Project 2 Coin Picking Robot
 
@@ -89,23 +89,22 @@ of the transmission, returns a verification that the message.
 
 ### Extra Special Features
 
-	- Added Mario music effects sharing the functions of Timer 2 with the wheels
-	- Implemented the use of a mapped analog stick and buttons from an Xbox controller rather
-	than a Nunchuk stick as described in the project files
+- Added Mario music effects sharing the functions of Timer 2 with the wheels
+- Implemented the use of a mapped analog stick and buttons from an Xbox controller rather than a Nunchuk stick as described in the project files
 
 ## Youtube Link Online Demo 
 
 ELEC 291 Project 2 Team B8 Online demo due to COVID-19 pandemic
 
-	<https://youtu.be/4grgkY-fsU0>
+https://youtu.be/4grgkY-fsU0
 
 *Team B8 was the only team to undertake the challenge of completing the entire project, with
 minimal social interaction.*
 
 ### Extra: Project Casualties
-	4 Burnt mosfets
-	3 Internally broken wires
-	1 Broken breadboard
-	2 Servo motors
-	3 Dead 9V batteries
+- 4 Burnt mosfets
+- 3 Internally broken wires
+- 1 Broken breadboard
+- 2 Servo motors
+- 3 Dead 9V batteries
 	8 Dead AA batteries
