@@ -41,7 +41,7 @@ being exchanged for a 9V battery to power the servo arm movements.
 
 Coins were detected using a metal detector assembled from a 1mH inductor from a Colpitts oscillator.
 
-<img src="images/metal_detect.PNG" width="5300"/>
+<img src="images/metal_detect.PNG" width="300"/>
 
 *Metal Detector Circuit*
 
