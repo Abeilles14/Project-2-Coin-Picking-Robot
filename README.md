@@ -23,7 +23,9 @@ area enclosed by a perimeter wire. The robot must be able to detect and pick up 
 Canadian coins in circulation (0.05$, 0.1$, 0.25$, 1.00$, and 2.00$) when scattered in a random
 arrangement before the coin picking process begins.
 
-![Completed Coin Pickign Robot](Robot/0_completed_robot.jpg)
+<img src="Robot/0_completed_robot.jpg" width="700"/>
+
+*Completed Coin Picking Robot*
 
 ## Technical Components
 
@@ -39,7 +41,9 @@ being exchanged for a 9V battery to power the servo arm movements.
 
 Coins were detected using a metal detector assembled from a 1mH inductor from a Colpitts oscillator.
 
-![Metal Detector Circuit](images/metal_detect.png)
+<img src="images/metal_detect.PNG" width="5300"/>
+
+*Metal Detector Circuit*
 
 The inductor is driven by a constant current to create a magnetic field, inducing an emf voltage
 causing detectable increases in frequency of the current through the inductor as the robot moves
@@ -58,7 +62,9 @@ enclosed by a perimeter wire. Due to teh absence of lab equipment such as a func
 an AC source delivered by a 9V battery powered LM555 acting as an oscillator to generate a square
 wave passing through the perimeter wire and inducing detectable flux changes near the wire.
 
-![Function Generated (CH1) and Peak Detector Output (CH2)](images/peak_detect_output.png)
+<img src="images/peak_detect_output.png" width="500"/>
+
+*Function Generated (CH1) and Peak Detector Output (CH2)*
 
 ### Peak Detector
 
@@ -68,7 +74,9 @@ induced emf, two tank circuits consisting of a 0.1 uF capacitor and a 1mH Colpit
 inductor were attached to the bottom of the robot that leads into a simple peak detector and amplifier
 circuit.
 
-![Peak Detector and Tank Circuit](images/peak_detect_circuit.png)
+<img src="images/peak_detect_circuit.png" width="500"/>
+
+*Peak Detection Circuit*
 
 As the tank's resonnant frequency was calculated to be 16 kHz, the function generator
 needed to be tuned accordingly to deliver a 16 kHz square wave. This was accomplished using two
@@ -105,7 +113,7 @@ of the transmission, returns a verification that the message.
 
 ## Youtube Link Online Demo 
 
-ELEC 291 Project 2 Team B8 Online demo due to COVID-19 pandemic
+ELEC 291 Project 2 Team B8 Online Demo
 
 https://youtu.be/4grgkY-fsU0
 
