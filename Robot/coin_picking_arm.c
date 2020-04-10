@@ -1,7 +1,3 @@
-//  square.c: Uses timer 2 interrupt to generate a square wave in pin
-//  P2.0 and a 75% duty cycle wave in pin P2.1
-//  Copyright (c) 2010-2018 Jesus Calvino-Fraga
-//  ~C51~
 
 #include <stdlib.h>
 #include <stdio.h>
