@@ -52,7 +52,7 @@ the arm, and picks up the coin using an electromagnet.
 
 ### Electromagnet
 
-Whe picking up a coin, the electromagnet is turned on and off using an N-mosfet switch controlled
+When picking up a coin, the electromagnet is turned on and off using an N-mosfet switch controlled
 by the EFM8 microcontroller.
 
 ### Perimeter Wire and Function Generator
