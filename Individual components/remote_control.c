@@ -187,7 +187,8 @@ void main (void)
 	waitms(500);
 	printf("\x1b[2J\x1b[1;1H"); // Clear screen using ANSI escape sequence.
 	
-/*	Probably don't need this 
+/*	Unused Code:
+
 	printf ("EFM8LB1 SPI/nRF24L01 transceiver test program.\n"
 	        "File: %s\n"
 	        "Compiled: %s, %s\n\n",
@@ -214,16 +215,16 @@ void main (void)
            
             /*ctlIn is formated as follows: 
               the 5 bit positions carry the values for the push buttons and the analog stick direction
-              Starting from the leftmost bit:
+              starting from the leftmost bit:
               A button  (0 or 1)
               B button  (0 or 1)
               X button  (0 or 1)
               Y button  (0 or 1)
               direction (1-9) */
             						
-            if(ctlIn>=10000){
+            if(ctlIn>=10000){ //Uses comparison to detect if bit is set
             	Abutton=1;
-            	ctlIn=ctlIn%10000;	//removes the leftmost bit if set
+            	ctlIn=ctlIn%10000;	//removes the leftmost bit if set as the next comparison is unaffected by the removed bit and allows for easier comparison
             } else
             	Abutton=0;
             
@@ -245,7 +246,7 @@ void main (void)
             	Ybutton=0;
             
             dir=ctlIn;
-             printf("IN: %i%i%i%i%i\r\n", Abutton,Bbutton,Xbutton,Ybutton,dir); //Prints data that is recieved, may want to remove
+             printf("IN: %i%i%i%i%i\r\n", Abutton,Bbutton,Xbutton,Ybutton,dir); //Prints data that is recieved
             	
             	            	
             /* FOR DEBUGGING ONLY
@@ -256,7 +257,7 @@ void main (void)
             */         	
         }
         
-        if(RI) //Other radio junk, stuff to do with handling lost messages and such
+        if(RI) //Other radio stuff relating to handling lost messages and such
         {
         	//safe_gets(data_array, sizeof(data_array), 2000);
         	gets(data_array);
@@ -266,8 +267,8 @@ void main (void)
 		    temp = nrf24_lastMessageStatus();
 			if(temp == NRF24_MESSAGE_LOST)
 		    {                    
-		        printf("> Message lost\r\n"); //for debugging, may want to remove
-		        dir = NO_MOVEMENT; //makes robot not move if message is lost
+		        printf("> Message lost\r\n"); //for debugging, if message is lost prints error message
+		        dir = NO_MOVEMENT; //makes robot stay still if message is lost to prevent the robot from running away
 		        Abutton=0;    
 		    }
 			nrf24_powerDown();
@@ -290,6 +291,8 @@ void main (void)
 		}
 		*/
 		
+	    
+	    
 		/*Motor Control:
 		  Directions are defined at the top of the file and look like this:
 		  	7	8	9
