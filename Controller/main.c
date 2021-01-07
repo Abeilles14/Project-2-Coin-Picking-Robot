@@ -180,16 +180,33 @@ void main(void)
 
 
 	
-    	//ADC CRAP 
+    	//ADC Configuration
     	ADC_CHSELR = BIT8;          // Select Channel 8
 		j[0]=readADC();
 		a[0]=(j[0]*3.3)/0x1000;
 		ADC_CHSELR = BIT9;          // Select Channel 9
 		j[1]=readADC();
 		a[1]=(j[1]*3.3)/0x1000;
-		//Direction numbers are based on the position of the number in the number pad. 
-		//8 is up, 2 is down, 4 left, 6 right etc	
-		if(a[0]>1.7){
+		/* Directions are defined at the top of the file and look like this:
+		  	7	8	9
+		  	4	5	6	
+		  	1	2	3
+		  This is based of a standard dial pad, with the analog stick centered at 5
+		  
+		  Voltage output of analog stick were found experimentally
+		  	-for a[0], a voltage greater than 1.7V indicates the analog stick is pointing left
+			-for a[0], a voltage less than 1.5V indicates the analog stick is pointing right
+				-if the voltage rests in the middle of these two, the analog stick is centered on the left-right plane.
+				
+		  	-for a[1], a voltage greater than 1.1V indicates the analog stick is pointing up
+			-for a[1], a voltage less than 0.95V indicates the analog stick is pointing down
+				-if the voltage rests in the middle of these two, the analog stick is centered on the up=down plane.
+				
+		Note that for simplicity, the directional controls of the robot are not analog, and therefor the analog stick will behave similarly to a directional pad
+		as the implementation is simpler for wireless transmission, and all that is required in this use case.
+		 */
+		
+	    	if(a[0]>1.7){
 			if(a[1]>1.1)
 				dir = 7;
 			else if(a[1]<0.95)
@@ -214,14 +231,14 @@ void main(void)
 				dir =5;
     
     	
-    	//TRANSCIEVER CRAP
+    	//TRANSCIEVER Components
         if(nrf24_dataReady())
         {
             nrf24_getData(data_array);
         	printf("IN: %s\r\n", data_array);
         }
         
-        if(serial_data_available()) // Did something arrived from the serial port?
+        if(serial_data_available()) // Checks if data has arrived from the serial port
         {
         	egets(data_array, sizeof(data_array));
 		    printf("\r\n");    
@@ -235,9 +252,9 @@ void main(void)
 			nrf24_powerDown();
     		nrf24_powerUpRx();
 		}
+	//prints out the inputs from the controller, for Debugging only
+	      	//sprintf(data_array,"%i%i%i%i%i",buttonA,buttonB,buttonX,buttonY,dir); 
 
-	        //sprintf(data_array,"%i%i%i%i%i",buttonA,buttonB,buttonX,buttonY,dir); 
-	        //prints out the inputs from the controller, for Debugging only
 
 	        nrf24_send(data_array);
 		    while(nrf24_isSending());
